@@ -23,18 +23,41 @@ TOKEN_PATH = ROOT / "token.json"
 CLAUDE_BIN = os.getenv("CLAUDE_BIN", "claude")
 
 
+def _resolve_data_source_id(notion: "NotionClient", database_id: str) -> str:
+    """新API用: DB の最初の data_source の ID を返す."""
+    db = notion.databases.retrieve(database_id=database_id)
+    sources = db.get("data_sources") or []
+    if not sources:
+        raise RuntimeError(
+            f"DB {database_id} に data_sources が見つかりません。Notion API のバージョンを確認してください。"
+        )
+    return sources[0]["id"]
+
+
+def _query_data_source(notion: "NotionClient", data_source_id: str, body: dict) -> dict:
+    """notion-client が data_sources.query を持たない場合に備えた汎用ラッパー."""
+    if hasattr(notion, "data_sources"):
+        return notion.data_sources.query(data_source_id=data_source_id, **body)
+    # SDK が未対応なら REST を直叩き
+    return notion.request(
+        path=f"data_sources/{data_source_id}/query",
+        method="POST",
+        body=body,
+    )
+
+
 def get_notion_todos():
     """NotionのTODOリストを取得"""
     notion = NotionClient(auth=NOTION_API_KEY)
-    response = notion.databases.query(
-        database_id=NOTION_DATABASE_ID,
-        filter={
+    data_source_id = _resolve_data_source_id(notion, NOTION_DATABASE_ID)
+    response = _query_data_source(notion, data_source_id, {
+        "filter": {
             "property": "ステータス",
             "select": {
                 "does_not_equal": "完了"
             }
         }
-    )
+    })
     todos = []
     for page in response["results"]:
         props = page["properties"]
@@ -98,7 +121,7 @@ def schedule_with_claude(todos, busy_slots, date):
 {busy_text}
 
 ## 条件
-- 作業時間は9:00〜21:00（日本時間）
+- 作業時間は9:00〜22:00（日本時間）
 - 集中作業は午前中に配置
 - 各タスクの所要時間を現実的に見積もる
 - 既存予定と重ならないようにする

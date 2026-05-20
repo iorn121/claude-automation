@@ -16,17 +16,16 @@
         tail -f ~/Documents/workspace/claude-automation/launchd/stdout.log
         tail -f ~/Documents/workspace/claude-automation/launchd/stderr.log
 
-      ⚠️ ProgramArguments の python3 のパスは環境に合わせて変えてください:
-        which python3
-      で確認したパスに書き換える。
+      パスは環境に合わせて編集してください:
+        ProgramArguments[0] = venv 内 python のフルパス (which python で確認)
+        EnvironmentVariables.PATH = claude CLI が見つかるディレクトリを含めること (~/.local/bin など)
     -->
     <key>Label</key>
     <string>com.iorn.claude-automation</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/env</string>
-        <string>python3</string>
+        <string>/Users/user/Documents/workspace/claude-automation/.venv/bin/python</string>
         <string>/Users/user/Documents/workspace/claude-automation/scripts/schedule.py</string>
     </array>
 
@@ -46,11 +45,13 @@
     <key>RunAtLoad</key>
     <false/>
 
-    <!-- PATH を継承（claude CLI が見つかるように） -->
+    <!-- claude CLI が ~/.local/bin にあるので PATH に含める -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>/Users/user/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/user</string>
         <key>LANG</key>
         <string>ja_JP.UTF-8</string>
     </dict>

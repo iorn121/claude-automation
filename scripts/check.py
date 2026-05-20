@@ -102,7 +102,20 @@ def check_notion(api_key: str | None, db_id: str | None) -> bool:
         title = "".join([t.get("plain_text", "") for t in db.get("title", [])]) or "(無題)"
         ok(f"DB取得OK: {title}")
 
-        props = db.get("properties", {})
+        # 新API: properties は data_source 側にある
+        sources = db.get("data_sources") or []
+        if not sources:
+            fail("data_sources が見つかりません（API バージョン要確認）")
+            return False
+        data_source_id = sources[0]["id"]
+        ok(f"Data Source ID: {data_source_id}")
+
+        if hasattr(notion, "data_sources"):
+            ds = notion.data_sources.retrieve(data_source_id=data_source_id)
+        else:
+            ds = notion.request(path=f"data_sources/{data_source_id}", method="GET")
+
+        props = ds.get("properties", {})
         expected = {
             "タスク名": "title",
             "ステータス": "select",
@@ -121,7 +134,14 @@ def check_notion(api_key: str | None, db_id: str | None) -> bool:
             fail(f"不足プロパティ: {', '.join(missing)}")
             return False
 
-        res = notion.databases.query(database_id=db_id, page_size=1)
+        if hasattr(notion, "data_sources"):
+            res = notion.data_sources.query(data_source_id=data_source_id, page_size=1)
+        else:
+            res = notion.request(
+                path=f"data_sources/{data_source_id}/query",
+                method="POST",
+                body={"page_size": 1},
+            )
         ok(f"クエリ成功 ({len(res.get('results', []))} 件サンプル取得)")
         return True
     except Exception as e:
