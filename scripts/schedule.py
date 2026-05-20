@@ -1,18 +1,26 @@
-import os
 import json
-from datetime import datetime, timedelta
+import os
+import re
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
 from dotenv import load_dotenv
-import anthropic
-from notion_client import Client as NotionClient
-from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from notion_client import Client as NotionClient
 
 load_dotenv()
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 NOTION_API_KEY = os.getenv("NOTION_API_KEY")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+
+ROOT = Path(__file__).resolve().parent.parent
+TOKEN_PATH = ROOT / "token.json"
+
+# Claude Code CLI のパス。環境変数で上書き可能。
+CLAUDE_BIN = os.getenv("CLAUDE_BIN", "claude")
 
 
 def get_notion_todos():
@@ -22,7 +30,7 @@ def get_notion_todos():
         database_id=NOTION_DATABASE_ID,
         filter={
             "property": "ステータス",
-            "status": {
+            "select": {
                 "does_not_equal": "完了"
             }
         }
@@ -32,7 +40,7 @@ def get_notion_todos():
         props = page["properties"]
         title = props.get("タスク名", {}).get("title", [])
         task_name = title[0]["text"]["content"] if title else "無題"
-        status = props.get("ステータス", {}).get("status", {}).get("name", "")
+        status = (props.get("ステータス", {}).get("select") or {}).get("name", "")
         due = props.get("期限", {}).get("date", {})
         due_date = due.get("start", "") if due else ""
         todos.append({
@@ -60,10 +68,21 @@ def get_calendar_free_slots(service, date: str):
     return busy
 
 
-def schedule_with_claude(todos, busy_slots, date):
-    """ClaudeにTODOの見積もりとスケジューリングを依頼"""
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+def _extract_json_array(text: str):
+    """Claude の出力から最初の JSON 配列を抽出"""
+    # コードフェンス除去
+    text = re.sub(r"```(?:json)?\s*", "", text)
+    text = text.replace("```", "")
+    # 最初の '[' から対応する ']' までを取り出す
+    start = text.find("[")
+    end = text.rfind("]")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError(f"JSON 配列が見つかりません: {text[:200]!r}")
+    return json.loads(text[start:end + 1])
 
+
+def schedule_with_claude(todos, busy_slots, date):
+    """ローカル Claude Code (CLI) に TODO の見積もりとスケジューリングを依頼"""
     todos_text = "\n".join([
         f"- {t['name']}（ステータス: {t['status']}{'、期限: ' + t['due'] if t['due'] else ''}）"
         for t in todos
@@ -85,7 +104,7 @@ def schedule_with_claude(todos, busy_slots, date):
 - 既存予定と重ならないようにする
 
 ## 出力形式
-以下のJSON形式のみで返してください。説明文は不要です。
+以下のJSON配列のみで返してください。説明文・コードフェンスは不要です。
 [
   {{
     "task": "タスク名",
@@ -95,14 +114,25 @@ def schedule_with_claude(todos, busy_slots, date):
   }}
 ]"""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    raw = message.content[0].text.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(raw)
+    # `claude -p` は単発の non-interactive 実行（プロンプトを引数で渡す）
+    try:
+        result = subprocess.run(
+            [CLAUDE_BIN, "-p", prompt],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=True,
+        )
+    except FileNotFoundError as e:
+        raise RuntimeError(
+            f"`{CLAUDE_BIN}` コマンドが見つかりません。Claude Code がインストールされ、PATH に通っているか確認してください。"
+        ) from e
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"claude CLI がエラー終了しました (exit={e.returncode})\nstderr: {e.stderr.strip()[:400]}"
+        ) from e
+
+    return _extract_json_array(result.stdout)
 
 
 def create_calendar_events(service, schedule, date):
@@ -139,12 +169,12 @@ def main():
 
     # 2. Googleカレンダーの空き時間取得
     print("📅 Googleカレンダーの予定を確認中...")
-    creds = Credentials.from_authorized_user_file("token.json")
+    creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
     service = build("calendar", "v3", credentials=creds)
     busy_slots = get_calendar_free_slots(service, today)
 
-    # 3. Claudeでスケジューリング
-    print("🧠 Claudeがスケジュールを作成中...")
+    # 3. Claudeでスケジューリング（ローカル Claude Code 経由）
+    print("🧠 Claude Code がスケジュールを作成中...")
     schedule = schedule_with_claude(todos, busy_slots, today)
 
     # 4. カレンダーにイベント作成

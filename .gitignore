@@ -33,3 +33,6 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# launchd ログ
+launchd/*.log

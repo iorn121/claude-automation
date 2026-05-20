@@ -1,4 +1,3 @@
-anthropic
 notion-client
 google-auth
 google-auth-oauthlib

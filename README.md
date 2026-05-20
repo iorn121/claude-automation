@@ -1,8 +1,10 @@
 # claude-automation
 
-Claude × Notion × Google Calendar による毎朝の自動スケジューリング。
+Notion × Claude Code (CLI) × Google Calendar による毎朝の自動スケジューリング。
 
-毎朝 7:00 (JST) に GitHub Actions が起動し、Notion のタスクを取得 → Claude が見積もり＆配置 → Google カレンダーに `🤖` 付きイベントを追加する。
+毎朝 7:00 (JST) に Mac の launchd が起動し、Notion のタスクを取得 → ローカル Claude Code が見積もり＆配置 → Google カレンダーに `🤖` 付きイベントを追加する。
+
+**Anthropic API キー / 課金は不要**（ローカル Claude Code を使うため）。代わりに **GitHub Actions では動かせない**（CLI と Claude Code セッションが Runner にないため）。
 
 ## セットアップ
 
@@ -19,7 +21,15 @@ cd claude-automation
 pip install -r requirements.txt
 ```
 
-### 3. `.env` を作成
+### 3. Claude Code を準備
+
+```bash
+claude --version
+```
+
+入っていない場合は [https://docs.claude.com/en/docs/claude-code](https://docs.claude.com/en/docs/claude-code) を参照。Pro/Max サブスクで `claude login` してあれば API キー不要。
+
+### 4. `.env` を作成
 
 ```bash
 cp .env.example .env
@@ -28,21 +38,20 @@ cp .env.example .env
 
 | 変数 | 説明 |
 |---|---|
-| `ANTHROPIC_API_KEY` | Anthropic Console で発行 |
-| `NOTION_API_KEY` | Notion インテグレーション (`secret_...`) |
-| `NOTION_DATABASE_ID` | マイタスク DB の ID |
+| `NOTION_API_KEY` | Notion インテグレーション (`ntn_...` または `secret_...`) |
+| `NOTION_DATABASE_ID` | Tasks DB の ID |
 | `GOOGLE_CALENDAR_ID` | `primary` でOK |
 
-### 4. Notion 側の準備
+### 5. Notion 側の準備
 
 DB に以下のプロパティが存在すること:
 - `タスク名` (Title)
-- `ステータス` (Status, `完了` を含む)
+- `ステータス` (Select, オプション: `未着手` / `進行中` / `完了`)
 - `期限` (Date, 任意)
 
 作成した Integration を該当 DB の「Connections」で接続する。
 
-### 5. Google OAuth トークンを取得
+### 6. Google OAuth トークンを取得
 
 Google Cloud Console で OAuth クライアント (デスクトップアプリ) を作成し、`credentials.json` をプロジェクトルートに置く。
 
@@ -52,52 +61,64 @@ python scripts/auth_google.py
 
 ブラウザで認証 → `token.json` が生成される。
 
-### 6. ローカルで動作確認
+### 7. ローカルで動作確認
+
+まず疎通だけ確認（書き込みなし）:
+
+```bash
+python scripts/check.py
+```
+
+`✨ すべてOK!` が出たら本実行:
 
 ```bash
 python scripts/schedule.py
 ```
 
-### 7. GitHub Secrets を設定
+### 8. 毎朝の自動実行（launchd）
 
-`Settings` → `Secrets and variables` → `Actions`:
-
-| Secret 名 | 値 |
-|---|---|
-| `ANTHROPIC_API_KEY` | Anthropic の API キー |
-| `NOTION_API_KEY` | Notion の API キー |
-| `NOTION_DATABASE_ID` | マイタスク DB の ID |
-| `GOOGLE_CALENDAR_ID` | `primary` など |
-| `GOOGLE_TOKEN_JSON` | `token.json` の中身（JSON 全体） |
-
-### 8. コミット & プッシュ
+`launchd/com.iorn.claude-automation.plist` を `~/Library/LaunchAgents/` にコピーして起動する。
 
 ```bash
-git add .
-git commit -m "feat: Claude自動スケジューリング初期セットアップ"
-git push origin main
+cp launchd/com.iorn.claude-automation.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.iorn.claude-automation.plist
 ```
 
-## 手動実行
+手動で1回流したい時:
 
-GitHub の `Actions` タブ → `毎朝のスケジューリング` → `Run workflow`。
+```bash
+launchctl start com.iorn.claude-automation
+```
 
-成功するとカレンダーに `🤖` 付きイベントが追加される。
+ログ:
+
+```bash
+tail -f launchd/stdout.log launchd/stderr.log
+```
+
+アンインストール:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.iorn.claude-automation.plist
+rm ~/Library/LaunchAgents/com.iorn.claude-automation.plist
+```
+
+**注意:** plist 内の Python パス・プロジェクトパス・PATH は環境に合わせて編集してください（`which python3` / `which claude` で確認）。
 
 ## ファイル構成
 
 ```
 claude-automation/
 ├── .env.example
-├── .github/
-│   └── workflows/
-│       └── daily.yml
 ├── .gitignore
 ├── README.md
+├── launchd/
+│   └── com.iorn.claude-automation.plist  # 毎朝の自動実行設定
 ├── requirements.txt
 └── scripts/
-    ├── auth_google.py
-    └── schedule.py
+    ├── auth_google.py   # 初回のみ: Google OAuth トークン生成
+    ├── check.py         # セットアップ確認（read-only）
+    └── schedule.py      # メイン: Notion → Claude → Calendar
 ```
 
 ## ⚠️ セキュリティ

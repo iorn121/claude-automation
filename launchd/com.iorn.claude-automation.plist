@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      毎朝 7:00 (JST) に schedule.py を実行する launchd 設定。
+      インストール:
+        cp launchd/com.iorn.claude-automation.plist ~/Library/LaunchAgents/
+        launchctl load ~/Library/LaunchAgents/com.iorn.claude-automation.plist
+      アンインストール:
+        launchctl unload ~/Library/LaunchAgents/com.iorn.claude-automation.plist
+        rm ~/Library/LaunchAgents/com.iorn.claude-automation.plist
+      手動実行:
+        launchctl start com.iorn.claude-automation
+      ログ確認:
+        tail -f ~/Documents/workspace/claude-automation/launchd/stdout.log
+        tail -f ~/Documents/workspace/claude-automation/launchd/stderr.log
+
+      ⚠️ ProgramArguments の python3 のパスは環境に合わせて変えてください:
+        which python3
+      で確認したパスに書き換える。
+    -->
+    <key>Label</key>
+    <string>com.iorn.claude-automation</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>python3</string>
+        <string>/Users/user/Documents/workspace/claude-automation/scripts/schedule.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/user/Documents/workspace/claude-automation</string>
+
+    <!-- 毎日 7:00 に起動 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Mac がスリープしていて 7:00 を逃した場合、復帰時に実行 -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- PATH を継承（claude CLI が見つかるように） -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>LANG</key>
+        <string>ja_JP.UTF-8</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/user/Documents/workspace/claude-automation/launchd/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/user/Documents/workspace/claude-automation/launchd/stderr.log</string>
+</dict>
+</plist>
