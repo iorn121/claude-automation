@@ -46,6 +46,36 @@ def _query_data_source(notion: "NotionClient", data_source_id: str, body: dict) 
     )
 
 
+# ---------------------------------------------------------------------------
+# Google Tasks（マイタスク）連携ヘルパー
+# ---------------------------------------------------------------------------
+
+# review.py との共有用。マイタスクの notes 先頭にこのプレフィックス付きで
+# Notion の page id を書き込んでおき、後で確実にマッピングできるようにする。
+NOTION_ID_PREFIX = "notion_id: "
+GOOGLE_TASKLIST_ID = os.getenv("GOOGLE_TASKLIST_ID", "@default")
+
+
+def encode_notion_id(notion_id: str, extra: str = "") -> str:
+    """Google Tasks の notes 用文字列を生成する."""
+    lines = [f"{NOTION_ID_PREFIX}{notion_id}"]
+    if extra:
+        lines.append("")
+        lines.append(extra)
+    return "\n".join(lines)
+
+
+def extract_notion_id(notes: str | None) -> str | None:
+    """notes から notion_id を取り出す。無ければ None."""
+    if not notes:
+        return None
+    for line in notes.splitlines():
+        line = line.strip()
+        if line.startswith(NOTION_ID_PREFIX):
+            return line[len(NOTION_ID_PREFIX):].strip()
+    return None
+
+
 def get_notion_todos():
     """NotionのTODOリストを取得"""
     notion = NotionClient(auth=NOTION_API_KEY)
@@ -70,7 +100,7 @@ def get_notion_todos():
             "id": page["id"],
             "name": task_name,
             "status": status,
-            "due": due_date
+            "due": due_date,
         })
     return todos
 
@@ -107,7 +137,8 @@ def _extract_json_array(text: str):
 def schedule_with_claude(todos, busy_slots, date):
     """ローカル Claude Code (CLI) に TODO の見積もりとスケジューリングを依頼"""
     todos_text = "\n".join([
-        f"- {t['name']}（ステータス: {t['status']}{'、期限: ' + t['due'] if t['due'] else ''}）"
+        f"- [id: {t['id']}] {t['name']}（ステータス: {t['status']}"
+        f"{'、期限: ' + t['due'] if t['due'] else ''}）"
         for t in todos
     ])
     busy_text = "\n".join([f"- {s[0]} 〜 {s[1]}" for s in busy_slots]) or "なし"
@@ -120,17 +151,23 @@ def schedule_with_claude(todos, busy_slots, date):
 ## 今日の既存予定（ブロック済み時間）
 {busy_text}
 
-## 条件
-- 作業時間は9:00〜22:00（日本時間）
-- 集中作業は午前中に配置
-- 各タスクの所要時間を現実的に見積もる
-- 既存予定と重ならないようにする
+## スケジューリングのルール
+1. 期限の近いタスクや重要度が高そうなタスクから順に空き時間へ割り当てる
+2. 作業時間は9:00〜22:00（日本時間）、集中作業は午前中に優先配置する
+3. 各タスクの所要時間を現実的に見積もり、既存予定と重複しないようにする
+4. **今日の空き時間に収まらないタスクはスケジュールに含めない**（無理に詰め込まない）
+5. **ひとつのタスクが曖昧・抽象的、または見積もりが3時間を超える場合は、具体的なサブタスクに分割してからスケジュールに入れる**
+   - 例: 「〇〇の設計をする」→「要件整理（60分）」「構成図の作成（90分）」など
 
 ## 出力形式
 以下のJSON配列のみで返してください。説明文・コードフェンスは不要です。
+- `notion_id` には上記 TODO リストの `[id: xxxx]` の xxxx をそのまま入れる
+- タスクを複数のサブタスクに分割した場合も、すべて同じ親タスクの notion_id を使う
+
 [
   {{
-    "task": "タスク名",
+    "task": "タスク名（分割した場合はサブタスク名）",
+    "notion_id": "元の Notion タスク id",
     "start": "HH:MM",
     "end": "HH:MM",
     "estimated_minutes": 数値
@@ -177,6 +214,89 @@ def create_calendar_events(service, schedule, date):
     return created
 
 
+def _list_existing_notion_ids(tasks_service, tasklist_id: str = GOOGLE_TASKLIST_ID) -> set[str]:
+    """未完了のマイタスクから notion_id を抽出してセットで返す（重複登録防止用）."""
+    existing: set[str] = set()
+    page_token = None
+    while True:
+        kwargs = {
+            "tasklist": tasklist_id,
+            "showCompleted": False,
+            "showHidden": False,
+            "maxResults": 100,
+        }
+        if page_token:
+            kwargs["pageToken"] = page_token
+        result = tasks_service.tasks().list(**kwargs).execute()
+        for item in result.get("items", []):
+            nid = extract_notion_id(item.get("notes", ""))
+            if nid:
+                existing.add(nid)
+        page_token = result.get("nextPageToken")
+        if not page_token:
+            break
+    return existing
+
+
+def create_google_tasks(tasks_service, todos, schedule, date, tasklist_id: str = GOOGLE_TASKLIST_ID):
+    """全 Notion 未完了タスクを Google Tasks（マイタスク）に登録する.
+
+    - 既にマイタスクに同じ notion_id があれば作り直さない（重複防止）
+    - スケジュール対象のタスクは notes に時間割り情報を併記する
+    - 期限: Notion の `期限` プロパティ or 今日（YYYY-MM-DD）
+    """
+    schedule_by_nid: dict[str, list[dict]] = {}
+    unknown_items: list[dict] = []
+    for item in schedule:
+        nid = item.get("notion_id")
+        if nid:
+            schedule_by_nid.setdefault(nid, []).append(item)
+        else:
+            unknown_items.append(item)
+    if unknown_items:
+        # notion_id を返してくれなかったスケジュール項目はマイタスク化を諦める
+        # （カレンダーには既に入っている）
+        print(f"⚠️  notion_id 不明のスケジュール {len(unknown_items)} 件はマイタスク化スキップ")
+
+    existing_nids = _list_existing_notion_ids(tasks_service, tasklist_id)
+
+    created = 0
+    skipped = 0
+    for todo in todos:
+        if todo["id"] in existing_nids:
+            skipped += 1
+            print(f"⏭️  既にマイタスクあり: {todo['name']}")
+            continue
+
+        sched_items = schedule_by_nid.get(todo["id"], [])
+        extra_lines: list[str] = []
+        if sched_items:
+            extra_lines.append("今日のスケジュール:")
+            for s in sched_items:
+                extra_lines.append(
+                    f"- {s.get('start', '?')}〜{s.get('end', '?')} {s.get('task', '')}"
+                    f"（{s.get('estimated_minutes', '?')}分）"
+                )
+        notes = encode_notion_id(todo["id"], "\n".join(extra_lines))
+
+        # マイタスクの期限。日付のみ。RFC3339（UTC, 時刻部分は無視される）。
+        due_date = todo.get("due") or date
+        # Notion の date は "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS..." を想定
+        due_day = due_date[:10] if due_date else date
+        body = {
+            "title": todo["name"],
+            "notes": notes,
+            "due": f"{due_day}T00:00:00.000Z",
+        }
+        tasks_service.tasks().insert(tasklist=tasklist_id, body=body).execute()
+        created += 1
+        print(f"📝 マイタスク作成: {todo['name']}（期限 {due_day}）")
+
+    if skipped:
+        print(f"  既存マイタスクのため作成スキップ: {skipped} 件")
+    return created
+
+
 def main():
     today = datetime.now().strftime("%Y-%m-%d")
     print(f"\n🤖 Claude自動スケジューリング開始: {today}\n")
@@ -203,6 +323,11 @@ def main():
     # 4. カレンダーにイベント作成
     print("📌 カレンダーにイベントを追加中...")
     create_calendar_events(service, schedule, today)
+
+    # 5. マイタスク（Google Tasks）に登録（完了チェック用）
+    print("📝 Google Tasks（マイタスク）に登録中...")
+    tasks_service = build("tasks", "v1", credentials=creds)
+    create_google_tasks(tasks_service, todos, schedule, today)
 
     print("\n✨ 完了！")
 

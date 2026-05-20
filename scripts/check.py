@@ -149,6 +149,12 @@ def check_notion(api_key: str | None, db_id: str | None) -> bool:
         return False
 
 
+REQUIRED_GOOGLE_SCOPES = (
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/tasks",
+)
+
+
 def check_google(calendar_id: str | None) -> bool:
     section("Google Calendar API")
     if not TOKEN_PATH.exists():
@@ -162,9 +168,49 @@ def check_google(calendar_id: str | None) -> bool:
         return False
     try:
         creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
+        # スコープ確認（古い token.json だと tasks が無い）
+        granted = set(creds.scopes or [])
+        missing = [s for s in REQUIRED_GOOGLE_SCOPES if s not in granted]
+        if missing:
+            fail(
+                "token.json のスコープが不足しています: "
+                + ", ".join(missing)
+                + "\n     `python scripts/auth_google.py` を再実行して token.json を再生成してください。"
+            )
+            return False
         service = build("calendar", "v3", credentials=creds)
         cal = service.calendarList().get(calendarId=calendar_id or "primary").execute()
         ok(f"カレンダー取得OK: {cal.get('summary')} ({cal.get('id')})")
+        return True
+    except Exception as e:
+        fail(f"接続失敗: {e}")
+        return False
+
+
+def check_google_tasks() -> bool:
+    section("Google Tasks API（マイタスク）")
+    if not TOKEN_PATH.exists():
+        fail(f"{TOKEN_PATH} がありません")
+        return False
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+    except ImportError:
+        fail("google-api-python-client が入っていません")
+        return False
+    try:
+        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
+        if "https://www.googleapis.com/auth/tasks" not in (creds.scopes or []):
+            fail("token.json に tasks スコープがありません。`python scripts/auth_google.py` を再実行してください")
+            return False
+        service = build("tasks", "v1", credentials=creds)
+        result = service.tasklists().list(maxResults=5).execute()
+        items = result.get("items", [])
+        if not items:
+            warn("タスクリストが1件も見つかりません（マイタスクをモバイル/ウェブで一度開いて作成してください）")
+            return False
+        default = next((i for i in items if i.get("id") == "@default"), items[0])
+        ok(f"タスクリスト取得OK: {default.get('title')} ({default.get('id')})")
         return True
     except Exception as e:
         fail(f"接続失敗: {e}")
@@ -178,6 +224,7 @@ def main() -> int:
         "Claude Code CLI": check_claude_cli(),
         "Notion": check_notion(env["NOTION_API_KEY"], env["NOTION_DATABASE_ID"]),
         "Google Calendar": check_google(env["GOOGLE_CALENDAR_ID"]),
+        "Google Tasks": check_google_tasks(),
     }
 
     section("結果")
@@ -187,7 +234,9 @@ def main() -> int:
         print(f"  {mark} {name}")
 
     if all_ok:
-        print("\n✨ すべてOK! `python scripts/schedule.py` を実行できます。")
+        print("\n✨ すべてOK!")
+        print("   朝: `python scripts/schedule.py`")
+        print("   夜: `python scripts/review.py --dry-run` → `python scripts/review.py`")
         return 0
     else:
         print("\n上のエラーを修正してから再実行してください。")
