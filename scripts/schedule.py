@@ -1,7 +1,11 @@
+import argparse
 import json
 import os
 import re
 import subprocess
+import sys
+import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -9,6 +13,8 @@ from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from notion_client import Client as NotionClient
+
+from notify import STATUS_PATH, notify, write_status
 
 load_dotenv()
 
@@ -74,6 +80,18 @@ def extract_notion_id(notes: str | None) -> str | None:
         if line.startswith(NOTION_ID_PREFIX):
             return line[len(NOTION_ID_PREFIX):].strip()
     return None
+
+
+def _format_task_title(name: str, sched_items: list[dict]) -> str:
+    """マイタスクのタイトル。スケジュール済みなら `⏰ HH:MM` を先頭に付ける.
+
+    複数サブタスクに分割されている場合は最も早い開始時刻を使う。
+    スケジュールが無ければ元の名前のままにする（プレフィックスなし）。
+    """
+    starts = sorted(s.get("start", "") for s in sched_items if s.get("start"))
+    if not starts:
+        return name
+    return f"⏰ {starts[0]} {name}"
 
 
 def get_notion_todos():
@@ -188,8 +206,14 @@ def schedule_with_claude(todos, busy_slots, date):
             f"`{CLAUDE_BIN}` コマンドが見つかりません。Claude Code がインストールされ、PATH に通っているか確認してください。"
         ) from e
     except subprocess.CalledProcessError as e:
+        # stdout / stderr の両方を出す。Claude Code は認証切れ等のメッセージを
+        # stdout に出すことがあるので、片方だけだと原因が分からなくなる。
+        stdout_tail = (e.stdout or "").strip()[-400:]
+        stderr_tail = (e.stderr or "").strip()[-400:]
         raise RuntimeError(
-            f"claude CLI がエラー終了しました (exit={e.returncode})\nstderr: {e.stderr.strip()[:400]}"
+            f"claude CLI がエラー終了しました (exit={e.returncode})\n"
+            f"stdout: {stdout_tail or '(空)'}\n"
+            f"stderr: {stderr_tail or '(空)'}"
         ) from e
 
     return _extract_json_array(result.stdout)
@@ -214,9 +238,15 @@ def create_calendar_events(service, schedule, date):
     return created
 
 
-def _list_existing_notion_ids(tasks_service, tasklist_id: str = GOOGLE_TASKLIST_ID) -> set[str]:
-    """未完了のマイタスクから notion_id を抽出してセットで返す（重複登録防止用）."""
-    existing: set[str] = set()
+def _list_existing_tasks_by_notion_id(
+    tasks_service, tasklist_id: str = GOOGLE_TASKLIST_ID
+) -> dict[str, dict]:
+    """未完了マイタスクから notion_id をキーにした辞書を返す.
+
+    値はマイタスク本体（title/notes/due/id 等を含む）。再実行時の差分検知や
+    update に使う。
+    """
+    existing: dict[str, dict] = {}
     page_token = None
     while True:
         kwargs = {
@@ -231,7 +261,7 @@ def _list_existing_notion_ids(tasks_service, tasklist_id: str = GOOGLE_TASKLIST_
         for item in result.get("items", []):
             nid = extract_notion_id(item.get("notes", ""))
             if nid:
-                existing.add(nid)
+                existing[nid] = item
         page_token = result.get("nextPageToken")
         if not page_token:
             break
@@ -239,11 +269,16 @@ def _list_existing_notion_ids(tasks_service, tasklist_id: str = GOOGLE_TASKLIST_
 
 
 def create_google_tasks(tasks_service, todos, schedule, date, tasklist_id: str = GOOGLE_TASKLIST_ID):
-    """全 Notion 未完了タスクを Google Tasks（マイタスク）に登録する.
+    """Claude がスケジュールしたタスクのみ Google Tasks（マイタスク）に同期する.
 
-    - 既にマイタスクに同じ notion_id があれば作り直さない（重複防止）
-    - スケジュール対象のタスクは notes に時間割り情報を併記する
+    - スケジュールに含まれない Notion タスクはマイタスクに登録しない
+    - 既存マイタスク（notion_id 付き）がスケジュール対象から外れていれば削除
+      ※ チェック済みタスクは showCompleted=False で取得していないため安全
+    - 既に同じ notion_id のマイタスクがあれば差分があるときだけ更新（patch）
+    - 無ければ新規作成
+    - タイトル先頭に `⏰ HH:MM ` を付ける（開始時刻、サブタスク分割時は最早）
     - 期限: Notion の `期限` プロパティ or 今日（YYYY-MM-DD）
+      ※ Google Tasks API は時刻部分を保存しないので date のみ
     """
     schedule_by_nid: dict[str, list[dict]] = {}
     unknown_items: list[dict] = []
@@ -258,79 +293,191 @@ def create_google_tasks(tasks_service, todos, schedule, date, tasklist_id: str =
         # （カレンダーには既に入っている）
         print(f"⚠️  notion_id 不明のスケジュール {len(unknown_items)} 件はマイタスク化スキップ")
 
-    existing_nids = _list_existing_notion_ids(tasks_service, tasklist_id)
+    todo_by_id = {t["id"]: t for t in todos}
+    existing = _list_existing_tasks_by_notion_id(tasks_service, tasklist_id)
 
-    created = 0
-    skipped = 0
-    for todo in todos:
-        if todo["id"] in existing_nids:
-            skipped += 1
-            print(f"⏭️  既にマイタスクあり: {todo['name']}")
+    created = updated = unchanged = deleted = unscheduled = 0
+
+    # 1) スケジュール対象だけ create / update
+    for nid in schedule_by_nid.keys():
+        todo = todo_by_id.get(nid)
+        if not todo:
+            # スケジュールに載ったが Notion から取得した todos に居ない id
+            # （Claude が幻覚した id 等）はスキップ
+            print(f"⚠️  Claude が返した notion_id={nid} が Notion 側に無いためスキップ")
             continue
 
-        sched_items = schedule_by_nid.get(todo["id"], [])
-        extra_lines: list[str] = []
-        if sched_items:
-            extra_lines.append("今日のスケジュール:")
-            for s in sched_items:
-                extra_lines.append(
-                    f"- {s.get('start', '?')}〜{s.get('end', '?')} {s.get('task', '')}"
-                    f"（{s.get('estimated_minutes', '?')}分）"
-                )
+        sched_items = schedule_by_nid[nid]
+        title = _format_task_title(todo["name"], sched_items)
+
+        extra_lines = ["今日のスケジュール:"]
+        for s in sched_items:
+            extra_lines.append(
+                f"- {s.get('start', '?')}〜{s.get('end', '?')} {s.get('task', '')}"
+                f"（{s.get('estimated_minutes', '?')}分）"
+            )
         notes = encode_notion_id(todo["id"], "\n".join(extra_lines))
 
-        # マイタスクの期限。日付のみ。RFC3339（UTC, 時刻部分は無視される）。
-        due_date = todo.get("due") or date
-        # Notion の date は "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS..." を想定
-        due_day = due_date[:10] if due_date else date
-        body = {
-            "title": todo["name"],
-            "notes": notes,
-            "due": f"{due_day}T00:00:00.000Z",
-        }
-        tasks_service.tasks().insert(tasklist=tasklist_id, body=body).execute()
-        created += 1
-        print(f"📝 マイタスク作成: {todo['name']}（期限 {due_day}）")
+        # マイタスクは毎日作り直す前提なので期限は常に当日固定。
+        # Notion 側の `期限` は schedule_with_claude のプロンプト経由で
+        # Claude の優先度判定に使われている。
+        due_day = date
+        due_rfc = f"{due_day}T00:00:00.000Z"
 
-    if skipped:
-        print(f"  既存マイタスクのため作成スキップ: {skipped} 件")
-    return created
+        existing_task = existing.get(todo["id"])
+        if existing_task:
+            need_update = (
+                existing_task.get("title") != title
+                or (existing_task.get("notes") or "") != notes
+                or (existing_task.get("due", "")[:10] != due_day)
+            )
+            if need_update:
+                tasks_service.tasks().patch(
+                    tasklist=tasklist_id,
+                    task=existing_task["id"],
+                    body={"title": title, "notes": notes, "due": due_rfc},
+                ).execute()
+                updated += 1
+                print(f"♻️  マイタスク更新: {title}")
+            else:
+                unchanged += 1
+        else:
+            body = {"title": title, "notes": notes, "due": due_rfc}
+            tasks_service.tasks().insert(tasklist=tasklist_id, body=body).execute()
+            created += 1
+            print(f"📝 マイタスク作成: {title}")
+
+    # 2) 既存マイタスクのうち、スケジュール対象でないものは削除
+    scheduled_nids = set(schedule_by_nid.keys())
+    for nid, existing_task in existing.items():
+        if nid in scheduled_nids:
+            continue
+        title = existing_task.get("title", "")
+        try:
+            tasks_service.tasks().delete(
+                tasklist=tasklist_id,
+                task=existing_task["id"],
+            ).execute()
+            deleted += 1
+            print(f"🗑️  マイタスク削除（未スケジュール）: {title}")
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️  削除失敗 {title}: {e}")
+
+    # 3) Notion に未完了で残っているが今日スケジュールされなかった件数（参考表示）
+    for todo in todos:
+        if todo["id"] not in scheduled_nids:
+            unscheduled += 1
+
+    print(
+        f"  作成 {created} / 更新 {updated} / 据え置き {unchanged} / "
+        f"削除 {deleted} / 未スケジュール {unscheduled}"
+    )
+    return created + updated
 
 
-def main():
+def _already_succeeded_today(today: str) -> dict | None:
+    """last-run.json を見て、当日 schedule が success/skipped で完了済みかを返す.
+
+    Returns:
+        該当する last-run データ（success or skipped）。なければ None。
+    """
+    if not STATUS_PATH.exists():
+        return None
+    try:
+        data = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    entry = data.get("schedule")
+    if not entry:
+        return None
+    if entry.get("status") not in ("success", "skipped"):
+        return None
+    finished_at = entry.get("finished_at", "")
+    # finished_at は ISO（YYYY-MM-DDTHH:MM:SS）想定
+    if finished_at[:10] != today:
+        return None
+    return entry
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="朝の自動スケジューリング")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="今日すでに成功していても強制的に再実行する",
+    )
+    args = parser.parse_args()
+
     today = datetime.now().strftime("%Y-%m-%d")
+    started_at = time.time()
     print(f"\n🤖 Claude自動スケジューリング開始: {today}\n")
 
-    # 1. NotionからTODO取得
-    print("📋 Notionからタスク取得中...")
-    todos = get_notion_todos()
-    print(f"  {len(todos)}件のタスクを取得")
+    # 冪等性: 今日もう成功してたら何もしない（launchd の catch-up 用）
+    if not args.force:
+        already = _already_succeeded_today(today)
+        if already:
+            msg = (
+                f"本日 {already.get('finished_at', '?')} に "
+                f"すでに完了済み: {already.get('summary', '')}"
+            )
+            print(f"⏭️  {msg}")
+            print("再実行したい場合は --force を付けてください。")
+            return 0
 
-    if not todos:
-        print("タスクがありません。終了します。")
-        return
+    try:
+        # 1. NotionからTODO取得
+        print("📋 Notionからタスク取得中...")
+        todos = get_notion_todos()
+        print(f"  {len(todos)}件のタスクを取得")
 
-    # 2. Googleカレンダーの空き時間取得
-    print("📅 Googleカレンダーの予定を確認中...")
-    creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
-    service = build("calendar", "v3", credentials=creds)
-    busy_slots = get_calendar_free_slots(service, today)
+        if not todos:
+            print("タスクがありません。終了します。")
+            summary = "未完了タスクなし。スキップ"
+            notify("📅 朝のスケジュール（スキップ）", summary, subtitle=today)
+            write_status("schedule", "skipped", summary, started_at)
+            return 0
 
-    # 3. Claudeでスケジューリング（ローカル Claude Code 経由）
-    print("🧠 Claude Code がスケジュールを作成中...")
-    schedule = schedule_with_claude(todos, busy_slots, today)
+        # 2. Googleカレンダーの空き時間取得
+        print("📅 Googleカレンダーの予定を確認中...")
+        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
+        service = build("calendar", "v3", credentials=creds)
+        busy_slots = get_calendar_free_slots(service, today)
 
-    # 4. カレンダーにイベント作成
-    print("📌 カレンダーにイベントを追加中...")
-    create_calendar_events(service, schedule, today)
+        # 3. Claudeでスケジューリング（ローカル Claude Code 経由）
+        print("🧠 Claude Code がスケジュールを作成中...")
+        schedule = schedule_with_claude(todos, busy_slots, today)
 
-    # 5. マイタスク（Google Tasks）に登録（完了チェック用）
-    print("📝 Google Tasks（マイタスク）に登録中...")
-    tasks_service = build("tasks", "v1", credentials=creds)
-    create_google_tasks(tasks_service, todos, schedule, today)
+        # 4. カレンダーにイベント作成
+        print("📌 カレンダーにイベントを追加中...")
+        created_events = create_calendar_events(service, schedule, today)
 
-    print("\n✨ 完了！")
+        # 5. マイタスク（Google Tasks）に登録（完了チェック用）
+        print("📝 Google Tasks（マイタスク）に登録中...")
+        tasks_service = build("tasks", "v1", credentials=creds)
+        tasks_touched = create_google_tasks(tasks_service, todos, schedule, today)
+
+        print("\n✨ 完了！")
+
+        summary = (
+            f"Notion {len(todos)}件 → カレンダー {len(created_events)}件 "
+            f"/ マイタスク {tasks_touched}件"
+        )
+        notify("✅ 朝のスケジュール完了", summary, subtitle=today, sound="Glass")
+        write_status("schedule", "success", summary, started_at)
+        return 0
+
+    except Exception as e:  # noqa: BLE001
+        err_msg = f"{type(e).__name__}: {e}"
+        traceback.print_exc()
+        notify(
+            "❌ 朝のスケジュール失敗",
+            err_msg[:200],
+            subtitle=today,
+            sound="Basso",
+        )
+        write_status("schedule", "error", err_msg, started_at, error=traceback.format_exc())
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

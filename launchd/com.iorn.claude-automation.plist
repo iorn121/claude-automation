@@ -41,9 +41,16 @@
         <integer>0</integer>
     </dict>
 
-    <!-- Mac がスリープしていて 7:00 を逃した場合、復帰時に実行 -->
+    <!--
+      Catch-up 用に RunAtLoad=true。
+      - launchd は StartCalendarInterval の時刻に Mac がスリープしてた場合、
+        復帰時に自動でジョブを実行する（標準動作）
+      - ただし Mac がシャットダウンされていた場合は復帰されないため、
+        次回ログイン時に RunAtLoad=true で拾う
+      - 多重実行は schedule.py 側の冪等チェック（last-run.json）で防ぐ
+    -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
 
     <!-- claude CLI が ~/.local/bin にあるので PATH に含める -->
     <key>EnvironmentVariables</key>

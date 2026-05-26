@@ -14,7 +14,10 @@ schedule.py が朝に作成した Google Tasks（マイタスク）のうち、
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -31,8 +34,27 @@ from schedule import (
     extract_notion_id,
     get_notion_todos,
 )
+from notify import STATUS_PATH, notify, write_status
 
 load_dotenv()
+
+
+def _already_succeeded_today(today: str) -> dict | None:
+    """last-run.json を見て、当日 review が success/skipped で完了済みかを返す."""
+    if not STATUS_PATH.exists():
+        return None
+    try:
+        data = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    entry = data.get("review")
+    if not entry:
+        return None
+    if entry.get("status") not in ("success", "skipped"):
+        return None
+    if entry.get("finished_at", "")[:10] != today:
+        return None
+    return entry
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -132,46 +154,91 @@ def main() -> int:
         action="store_true",
         help="Notion を更新せず判定結果のみ表示",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="今日すでに完了していても強制的に再実行する",
+    )
     args = parser.parse_args()
 
     today = datetime.now().strftime("%Y-%m-%d")
+    started_at = time.time()
     print(f"\n🌙 タスク完了レビュー開始: {today}\n")
 
-    print("📋 Notion から未完了タスク取得中...")
-    todos = get_notion_todos()
-    print(f"  {len(todos)} 件")
+    # 冪等性チェック（dry-run はスキップ判定しない）
+    if not args.force and not args.dry_run:
+        already = _already_succeeded_today(today)
+        if already:
+            msg = (
+                f"本日 {already.get('finished_at', '?')} に "
+                f"すでに完了済み: {already.get('summary', '')}"
+            )
+            print(f"⏭️  {msg}")
+            print("再実行したい場合は --force を付けてください。")
+            return 0
 
-    print("📝 マイタスクの状態を取得中...")
-    creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
-    tasks_service = build("tasks", "v1", credentials=creds)
-    my_tasks = get_my_tasks(tasks_service)
-    checked = sum(1 for m in my_tasks if m["status"] == "completed")
-    print(f"  マイタスク {len(my_tasks)} 件（うちチェック済み {checked} 件）")
+    try:
+        print("📋 Notion から未完了タスク取得中...")
+        todos = get_notion_todos()
+        print(f"  {len(todos)} 件")
 
-    if not todos:
-        print("未完了タスクがありません。終了します。")
+        print("📝 マイタスクの状態を取得中...")
+        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
+        tasks_service = build("tasks", "v1", credentials=creds)
+        my_tasks = get_my_tasks(tasks_service)
+        checked = sum(1 for m in my_tasks if m["status"] == "completed")
+        print(f"  マイタスク {len(my_tasks)} 件（うちチェック済み {checked} 件）")
+
+        if not todos:
+            print("未完了タスクがありません。終了します。")
+            summary = "未完了タスクなし"
+            if not args.dry_run:
+                notify("🌙 夜のレビュー（スキップ）", summary, subtitle=today)
+                write_status("review", "skipped", summary, started_at)
+            return 0
+
+        decisions = decide_completions(todos, my_tasks)
+
+        # 未チェックの参考表示（マイタスクには登録されているが未チェックなもの）
+        completed_nids = {d["id"] for d in decisions}
+        pending_in_my_tasks = [
+            m for m in my_tasks
+            if m["status"] != "completed"
+            and m["notion_id"] in {t["id"] for t in todos}
+            and m["notion_id"] not in completed_nids
+        ]
+        if pending_in_my_tasks:
+            print("\n📌 マイタスクに残っている（未チェック）:")
+            for m in pending_in_my_tasks:
+                print(f"  - {m['title']}")
+
+        print("\n📝 Notion を更新中..." if not args.dry_run else "\n📝 [dry-run] 更新内容:")
+        updated = apply_completions(decisions, todos, dry_run=args.dry_run)
+
+        print(f"\n✨ 完了！ {updated} 件を「完了」に{'する予定' if args.dry_run else '更新'}しました。")
+
+        # dry-run 時は通知・ステータス書き込みしない
+        if not args.dry_run:
+            summary = (
+                f"チェック済み {checked} / 完了反映 {updated} / "
+                f"未チェック {len(pending_in_my_tasks)}"
+            )
+            notify("✨ 夜のレビュー完了", summary, subtitle=today, sound="Glass")
+            write_status("review", "success", summary, started_at)
         return 0
 
-    decisions = decide_completions(todos, my_tasks)
-
-    # 未チェックの参考表示（マイタスクには登録されているが未チェックなもの）
-    completed_nids = {d["id"] for d in decisions}
-    pending_in_my_tasks = [
-        m for m in my_tasks
-        if m["status"] != "completed"
-        and m["notion_id"] in {t["id"] for t in todos}
-        and m["notion_id"] not in completed_nids
-    ]
-    if pending_in_my_tasks:
-        print("\n📌 マイタスクに残っている（未チェック）:")
-        for m in pending_in_my_tasks:
-            print(f"  - {m['title']}")
-
-    print("\n📝 Notion を更新中..." if not args.dry_run else "\n📝 [dry-run] 更新内容:")
-    updated = apply_completions(decisions, todos, dry_run=args.dry_run)
-
-    print(f"\n✨ 完了！ {updated} 件を「完了」に{'する予定' if args.dry_run else '更新'}しました。")
-    return 0
+    except Exception as e:  # noqa: BLE001
+        err_msg = f"{type(e).__name__}: {e}"
+        traceback.print_exc()
+        if not args.dry_run:
+            notify(
+                "❌ 夜のレビュー失敗",
+                err_msg[:200],
+                subtitle=today,
+                sound="Basso",
+            )
+            write_status("review", "error", err_msg, started_at, error=traceback.format_exc())
+        return 1
 
 
 if __name__ == "__main__":

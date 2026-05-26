@@ -37,8 +37,12 @@
         <integer>0</integer>
     </dict>
 
+    <!--
+      Catch-up 用に RunAtLoad=true。22:00 を逃した場合は次回ログイン時に走る。
+      多重実行は review.py 側の冪等チェック（last-run.json）で防ぐ。
+    -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
 
     <key>EnvironmentVariables</key>
     <dict>

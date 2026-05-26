@@ -2,8 +2,10 @@
 
 Notion × Claude Code (CLI) × Google カレンダー × Google Tasks（マイタスク）による毎朝の自動スケジューリング。
 
-- **朝 7:00** — Notion のタスクを取得 → ローカル Claude Code が見積もり＆配置 → Google カレンダーに `🤖` 付きイベントを追加 → さらに全未完了タスクを Google Tasks（マイタスク）にも登録（notes に Notion page ID を埋め込む）
+- **朝 7:00** — Notion のタスクを取得 → ローカル Claude Code が見積もり＆配置 → Google カレンダーに `🤖` 付きイベントを追加 → **同じスケジュール対象のタスク**を Google Tasks（マイタスク）にも登録（notes に Notion page ID を埋め込む）
 - **夜 22:00** — マイタスクのチェック状態を確認し、ユーザーがチェックしたタスクに対応する Notion を「完了」に更新
+
+マイタスクには **Claude が今日スケジュールしたタスクのみ**が並ぶ。前日マイタスクに残っていた未スケジュールタスクは、その日のスケジュールに含まれていなければ自動削除される（チェック済みは触らない）。
 
 完了判定はユーザーの**明示的なチェック**を根拠にする（Claude による推測ではない）。マイタスクにはモバイル / ウェブ / カレンダー画面右側のタスクパネル等から手軽にチェックを入れられる。
 
@@ -164,15 +166,48 @@ claude-automation/
     ├── auth_google.py   # 初回のみ: Google OAuth トークン生成（calendar + tasks）
     ├── check.py         # セットアップ確認（read-only）
     ├── schedule.py      # 朝: Notion → Claude → Calendar + マイタスク登録
-    └── review.py        # 夜: マイタスクのチェック状態 → Notion 完了に同期
+    ├── review.py        # 夜: マイタスクのチェック状態 → Notion 完了に同期
+    ├── notify.py        # macOS 通知センターへの通知ヘルパー（共通）
+    └── status.py        # 今日の自動実行状況を確認
+```
+
+## 実行状況の確認
+
+```bash
+python scripts/status.py
+```
+
+`launchd/last-run.json` を読んで、当日の朝/夜ジョブが走ったか、何件処理したか、エラーがあったかを表示する。
+
+`schedule.py` / `review.py` は完了時に macOS 通知センターに結果を出すので、見逃しにくい。初回実行時に「通知の許可」を求められたら許可しておく。
+
+## Catch-up（実行漏れの救済）
+
+`StartCalendarInterval` の時刻に Mac がスリープしてたり電源 OFF だったりすると、launchd の標準動作だけでは:
+
+- **スリープ中** → 復帰時に自動で実行される（launchd の標準動作）
+- **シャットダウン中** → 失われる ❌
+
+これを救済するため、plist は `RunAtLoad=true` にしてあり、**Mac 起動直後（ジョブのロード時）にも一度走る**。多重実行を防ぐため、`schedule.py` / `review.py` は `last-run.json` を見て当日すでに `success` / `skipped` で終わっていればスキップする。
+
+強制再実行したい場合:
+
+```bash
+python scripts/schedule.py --force
+python scripts/review.py --force
 ```
 
 ## 仕組み（マイタスク連携）
 
 - `schedule.py` がマイタスクを作成する際、`notes` 欄の先頭に `notion_id: <Notion page id>` を埋め込む
-- 既にマイタスクに同じ `notion_id` が存在すれば作り直さない（再実行しても重複しない）
+- マイタスクに登録するのは **Claude が今日スケジュールした Notion タスクのみ**（タイトル先頭に `⏰ HH:MM ` プレフィックス、サブタスク分割時は最早の開始時刻）
+- **期限は常に当日固定**。マイタスクは毎日作り直す運用なので、Notion の `期限` プロパティは Claude スケジューラの優先度判定にだけ使い、マイタスク側の due には反映しない
+- 既にマイタスクに同じ `notion_id` が存在すれば差分がある場合のみ patch で更新（タイトル/notes/期限）
+- 既存マイタスク（notion_id 付き・未チェック）のうち今日のスケジュール対象外のものは **delete API で削除**。チェック済みは `showCompleted=False` で取得していないため触らない
 - `review.py` は `notes` から `notion_id` を読み取り、マイタスクが `completed` 状態のものに対応する Notion タスクを「完了」に更新する
-- マイタスクに残っている（未チェック）タスクは触らない
+- マイタスクに残っている（未チェック）タスクは触らない（次回スケジュールから外れれば削除される）
+
+> ⚠️ Google Tasks API は `due` の時刻部分を保存しないため、API 経由で時刻指定したタスクは作れません。代わりにタイトル先頭に `⏰ HH:MM` を付けることで「いつのタスクか」が一覧で見えるようにしています。
 
 ## ⚠️ セキュリティ
 
