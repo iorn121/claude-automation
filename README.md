@@ -20,6 +20,17 @@ git clone https://github.com/iorn121/claude-automation.git
 cd claude-automation
 ```
 
+### 2. Python 3.11+ と仮想環境を準備
+
+```bash
+python3.11 --version
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+```
+
+`python3.11` がない場合は `python3` で代用可（3.11以上を推奨）。
+
 ### 2. 依存関係をインストール
 
 ```bash
@@ -71,6 +82,8 @@ python scripts/auth_google.py
 ```
 
 ブラウザで認証 → `token.json` が生成される。スコープは `calendar` と `tasks` の2つ。
+
+> 補足: `scripts/auth_google.py` はローカル初期認証用です。GitHub Secrets への格納案内は「将来クラウド運用する場合」の参考情報で、現行のローカル/launchd 運用では不要です。
 
 > 既存の `token.json` がある場合（カレンダーのみ対応の古い版）は、`auth_google.py` を再実行するとスコープ不足を検出して再認証を促す。
 
@@ -165,6 +178,7 @@ claude-automation/
 └── scripts/
     ├── auth_google.py   # 初回のみ: Google OAuth トークン生成（calendar + tasks）
     ├── check.py         # セットアップ確認（read-only）
+    ├── cleanup_today.py # 🤖イベント/当日マイタスクのクリーンアップ
     ├── schedule.py      # 朝: Notion → Claude → Calendar + マイタスク登録
     ├── review.py        # 夜: マイタスクのチェック状態 → Notion 完了に同期
     ├── notify.py        # macOS 通知センターへの通知ヘルパー（共通）
@@ -190,7 +204,13 @@ python scripts/status.py
 
 これを救済するため、plist は `RunAtLoad=true` にしてあり、**Mac 起動直後（ジョブのロード時）にも一度走る**。多重実行を防ぐため、`schedule.py` / `review.py` は `last-run.json` を見て当日すでに `success` / `skipped` で終わっていればスキップする。
 
-強制再実行したい場合:
+再実行前に、当日の 🤖 イベント/マイタスクを明示的に掃除したい場合:
+
+```bash
+python scripts/cleanup_today.py --all
+```
+
+そのうえで強制再実行:
 
 ```bash
 python scripts/schedule.py --force
@@ -216,3 +236,55 @@ python scripts/review.py --force
 ## ライセンス
 
 Private use.
+
+---
+
+## 改善点バックログ
+
+> 監査日: 2026-05-31。Tech: Python / launchd / Notion + Claude CLI + Google Calendar/Tasks。`.env.example` あり。CI・LICENSE なし。
+
+### 機能 (Functionality)
+
+- [ ] `[P1]` `schedule.py --force` 再実行で 🤖 カレンダーイベント重複 — upsert 化または自動 cleanup
+- [ ] `[P1]` `cleanup_today.py` を README ファイル構成・運用手順に追加
+- [ ] `[P2]` `schedule.py` に `--dry-run` 追加
+- [ ] `[P2]` 夜の `review.py` 完了時に 🤖 イベント完了/削除オプション
+- [ ] `[P2]` Notion プロパティ名を `.env` で設定可能に
+- [ ] `[P2]` 未スケジュールタスクの通知強化
+- [ ] `[P3]` 複数 Notion DB / カレンダー対応
+- [ ] `[P3]` 週次レビュー・未チェックリマインド
+
+### デザイン/UX (Design)
+
+- [ ] `[P2]` `status.py` に `--json` 出力
+- [ ] `[P2]` `check.py` をトラブルシュートガイド形式に拡張
+- [ ] `[P3]` 通知メッセージの統一フォーマット
+- [ ] `[P3]` `notify.py` 失敗時の stdout フォールバック
+
+### セキュリティ (Security)
+
+- [ ] `[P1]` `.gitignore` に `token.json.bak` / `launchd/last-run.json` 追加
+- [ ] `[P1]` リポジトリ履歴に秘密情報がないか確認手順を README に
+- [ ] `[P2]` `auth_google.py` の GitHub Secrets 案内を「将来用」と明記（GHA なし）
+- [ ] `[P2]` OAuth `credentials.json` の配置・権限・ローテーション手順
+- [ ] `[P3]` `.env` 各キーのバリデーションを `check.py` に
+
+### システム設計 (System Design)
+
+- [ ] `[P1]` `requirements.txt` の依存バージョンを pin
+- [ ] `[P2]` `scripts/` を Python パッケージ化（`python -m` 実行に統一）
+- [ ] `[P2]` JST を `TZ` 環境変数で設定可能に
+- [ ] `[P2]` launchd plist をテンプレート化 + セットアップスクリプト
+- [ ] `[P2]` OAuth トークンリフレッシュ失敗時の再認証フロー共通化
+- [ ] `[P3]` Claude CLI 呼び出しのリトライ・タイムアウトを `.env` 化
+- [ ] `[P3]` 構造化ログ（JSON Lines）出力モード
+
+### ドキュメント/運用 (Docs & Ops)
+
+- [ ] `[P1]` 推奨 Python バージョン（3.11+）と venv 手順を README に
+- [ ] `[P1]` `.env.example` に `CLAUDE_BIN` 追記
+- [ ] `[P2]` 正式 LICENSE ファイル追加
+- [ ] `[P2]` Dependabot（pip）導入
+- [ ] `[P2]` トラブルシューティング節（launchd 未実行、Claude 認証切れ等）
+- [ ] `[P2]` 朝/夜フローのシーケンス図追加
+- [ ] `[P3]` pre-commit（ruff/mypy）+ 単体テスト整備
