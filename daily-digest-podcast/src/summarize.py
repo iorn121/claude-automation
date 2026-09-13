@@ -15,18 +15,25 @@ import json
 import logging
 import os
 import sys
+import time
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from google import genai
+from google.genai import errors as genai_errors
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("summarize")
 
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 MAX_CHARS_PER_ARTICLE = 1500  # 1記事あたり要約対象にするテキストの上限（トークン節約）
+
+# Gemini側が一時的に混雑している(503 UNAVAILABLE)ことがあるため、
+# 指数バックオフで数回リトライする(1日1回の実行なので多少待っても問題ない)。
+MAX_RETRIES = 5
+RETRY_BACKOFF_SECONDS = [15, 30, 60, 120, 180]
 
 SYSTEM_PROMPT = """\
 あなたは、エンジニア向けの日刊ニュースPodcastの構成作家 兼 パーソナリティです。
@@ -68,18 +75,33 @@ def summarize(articles: list[dict[str, Any]], target_date: str, api_key: str) ->
     client = genai.Client(api_key=api_key)
     user_prompt = _build_user_prompt(articles, target_date)
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=user_prompt,
-        config={
-            "system_instruction": SYSTEM_PROMPT,
-            "temperature": 0.6,
-        },
-    )
-    script = (response.text or "").strip()
-    if not script:
-        raise RuntimeError("Gemini APIから空の応答が返りました")
-    return script
+    last_error: Exception | None = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=user_prompt,
+                config={
+                    "system_instruction": SYSTEM_PROMPT,
+                    "temperature": 0.6,
+                },
+            )
+            script = (response.text or "").strip()
+            if not script:
+                raise RuntimeError("Gemini APIから空の応答が返りました")
+            return script
+        except genai_errors.ServerError as e:
+            last_error = e
+            if attempt >= MAX_RETRIES:
+                break
+            wait_sec = RETRY_BACKOFF_SECONDS[min(attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1)]
+            log.warning(
+                "Gemini APIが一時的に利用できません(%s回目/%s回): %s -- %d秒待ってリトライします",
+                attempt, MAX_RETRIES, e, wait_sec,
+            )
+            time.sleep(wait_sec)
+
+    raise RuntimeError(f"Gemini APIへの要約リクエストが{MAX_RETRIES}回とも失敗しました: {last_error}")
 
 
 def main() -> None:
