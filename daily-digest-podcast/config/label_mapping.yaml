@@ -1,0 +1,147 @@
+# 大雑把なジャンル(MECEを意識した9種類、最後の「その他」は受け皿)の定義。
+#
+# genres の並び順がそのまま「選べるジャンル一覧」になる(config/labels.yamlの
+# ON/OFF一覧はここが唯一のソース)。フィード側(feeds.yaml)にはジャンルの
+# 概念はなく、記事ごとに毎回ここで分類される。
+#
+# 記事の分類方法:
+#   元記事のタグ・タイトルを小文字にして、keywords のどれかが部分一致すれば、
+#   そのジャンルに分類される(1記事が複数ジャンルに入ってもよい)。
+#   どのジャンルのキーワードにも一致しなかった場合は「その他」に分類される
+#   (＝必ず1つ以上のジャンルが付く)。
+#
+# ジャンルの追加・削除・キーワードの調整はここを直接編集すればよい。
+# (ラベルのON/OFF一覧にもすぐ反映される)
+
+genres:
+  AI:
+    keywords:
+      - ai
+      - artificial intelligence
+      - machine learning
+      - llm
+      - gpt
+      - gemini
+      - claude
+      - anthropic
+      - chatgpt
+      - deepmind
+      - 生成ai
+      - 機械学習
+      - 人工知能
+
+  プログラミング:
+    keywords:
+      - programming
+      - webdev
+      - devtools
+      - developer
+      - coding
+      - framework
+      - typescript
+      - javascript
+      - python
+      - django
+      - flutter
+      - dotnet
+      - bunjs
+      - opensource
+      - open source
+      - testing
+      - playwright
+      - vscode
+      - gamedev
+      - nocode
+      - no-code
+      - プログラミング
+      - 開発
+
+  セキュリティ:
+    keywords:
+      - security
+      - malware
+      - password
+      - vulnerab
+      - cve
+      - cyber
+      - cryptograph
+      - phishing
+      - clickfix
+      - exploit
+      - ransomware
+      - セキュリティ
+      - 脆弱性
+      - 攻撃
+
+  インフラ・クラウド:
+    keywords:
+      - cloud
+      - azure
+      - aws
+      - gcp
+      - kubernetes
+      - docker
+      - devops
+      - database
+      - networking
+      - server
+      - infrastructure
+      - インフラ
+      - クラウド
+
+  ガジェット・OS:
+    keywords:
+      - android
+      - ios
+      - macos
+      - windows
+      - pixel
+      - smartphone
+      - mobile
+      - laptop
+      - linux
+      - hardware
+      - device
+      - chip
+
+  ロボット:
+    keywords:
+      - robot
+      - robots
+      - drone
+      - automation
+      - autonomous
+
+  宇宙・科学:
+    keywords:
+      - space
+      - nasa
+      - rocket
+      - satellite
+      - astro
+      - physics
+      - quantum
+      - science
+      - esa
+      - planetary
+      - 宇宙
+      - 科学
+
+  ビジネス・社会:
+    keywords:
+      - business
+      - lawsuit
+      - bankruptcy
+      - policy
+      - patent
+      - intellectual property
+      - market
+      - economy
+      - ビジネス
+      - 経済
+      - 法務
+
+  その他:
+    # どのジャンルのキーワードにも一致しなかった記事の受け皿(必ず1つ以上のジャンルを
+    # 付けるためのフォールバック)。keywordsは空のままにする(直接ここに一致させない)。
+    keywords: []

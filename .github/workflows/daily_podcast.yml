@@ -1,0 +1,101 @@
+name: Daily AI/Programming/Security Digest Podcast
+
+# このワークフローは、既存リポジトリのサブフォルダに daily-digest-podcast/ を
+# 置く前提で書かれています。ソースコードは main ブランチのサブフォルダに置きつつ、
+# 生成物(mp3・podcast.xml)だけは専用の podcast-data ブランチにpushします。
+# こうすることで、
+#   1. GitHub Pagesの「/docsフォルダ」制約(サブフォルダ配下のdocsは選べない)を回避できる
+#   2. 日々増える音声ファイルの履歴でmainブランチが肥大化するのを防げる
+# という2つの問題を同時に解決しています。
+#
+# 事前準備:
+#   - Settings > Pages > Source: "Deploy from a branch"、Branch: podcast-data、フォルダ: / (root)
+#   - Settings > Secrets and variables > Actions
+#       Secrets  : GEMINI_API_KEY
+#       Variables: PODCAST_BASE_URL (例: https://<user>.github.io/<repo>)
+
+on:
+  schedule:
+    # 21:00 UTC = 翌朝6:00 JST
+    - cron: "0 21 * * *"
+  workflow_dispatch: {} # Actionsタブから手動実行できるようにしておく（動作確認用）
+
+permissions:
+  contents: write
+
+env:
+  PROJECT_DIR: daily-digest-podcast
+  DATA_BRANCH: podcast-data
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    services:
+      voicevox:
+        image: voicevox/voicevox_engine:cpu-latest
+        ports:
+          - 50021:50021
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg (mp3書き出しに必要)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: pip install -r requirements.txt
+
+      - name: Wait for VOICEVOX ENGINE to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:50021/version > /dev/null; then
+              echo "VOICEVOX ENGINE ready"
+              exit 0
+            fi
+            echo "waiting for VOICEVOX ENGINE... ($i)"
+            sleep 2
+          done
+          echo "VOICEVOX ENGINE did not become ready in time" >&2
+          exit 1
+
+      - name: Restore previous episodes (podcast-data branch)
+        run: |
+          rm -rf "${PROJECT_DIR}/docs"
+          if git ls-remote --exit-code --heads origin "${DATA_BRANCH}" > /dev/null 2>&1; then
+            git clone --branch "${DATA_BRANCH}" --single-branch --depth 1 \
+              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+              /tmp/podcast-data
+            rm -rf /tmp/podcast-data/.git
+            mv /tmp/podcast-data "${PROJECT_DIR}/docs"
+          else
+            mkdir -p "${PROJECT_DIR}/docs/episodes"
+          fi
+
+      - name: Generate today's episode
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PODCAST_BASE_URL: ${{ vars.PODCAST_BASE_URL }}
+          VOICEVOX_URL: "http://127.0.0.1:50021"
+        run: python src/run_all.py
+
+      - name: Publish to podcast-data branch
+        run: |
+          cd "${PROJECT_DIR}/docs"
+          git init -q
+          git checkout -q -B "${DATA_BRANCH}"
+          git config user.name "digest-bot"
+          git config user.email "digest-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "chore: publish digest ${{ github.run_id }}" || echo "変更なし"
+          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          # 履歴を残さず毎回上書き（音声ファイルでリポジトリが肥大化するのを防ぐため）
+          git push --force origin "HEAD:${DATA_BRANCH}"
