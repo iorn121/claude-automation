@@ -31,8 +31,28 @@ MAX_EPISODES_IN_FEED = 30  # フィードに残す最大エピソード数（増
 DEFAULT_TITLE = "毎日AI・プログラミング・セキュリティダイジェスト"
 DEFAULT_DESCRIPTION = "AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。"
 DEFAULT_AUTHOR = "Personal Digest Bot"
+# Spotify/Apple Podcastsの審査に必要なオーナー情報（環境変数で上書き可能）
+DEFAULT_OWNER_NAME = "Iori"
+DEFAULT_OWNER_EMAIL = "wmt.tkn.121@gmail.com"
 # VOICEVOXクレジット表記（使用した話者に合わせて書き換えてください）
 VOICE_CREDIT = "この番組の音声には VOICEVOX を使用しています。"
+
+# 番組アートワーク: リポジトリに同梱している assets/artwork.jpg を
+# 初回公開時に docs/artwork.jpg としてコピーする（Spotify/Apple Podcastsの
+# 審査には正方形1400px以上の画像が必須のため）。
+ARTWORK_SRC = Path(__file__).resolve().parent.parent / "assets" / "artwork.jpg"
+ARTWORK_FILENAME = "artwork.jpg"
+
+
+def _ensure_artwork(docs_dir: Path) -> None:
+    dest = docs_dir / ARTWORK_FILENAME
+    if dest.exists():
+        return  # 既にpodcast-dataブランチ側にあるものを尊重する（再アップロード不要）
+    if ARTWORK_SRC.exists():
+        shutil.copyfile(ARTWORK_SRC, dest)
+        log.info("番組アートワークを配置しました: %s", dest)
+    else:
+        log.warning("番組アートワークが見つかりません: %s", ARTWORK_SRC)
 
 
 def _episode_id(target_date: str) -> str:
@@ -49,6 +69,7 @@ def publish_episode(
     docs_dir = Path(docs_dir)
     episodes_dir = docs_dir / "episodes"
     episodes_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_artwork(docs_dir)
 
     ep_id = _episode_id(target_date)
     dest_filename = f"{ep_id}.mp3"
@@ -101,6 +122,9 @@ def _write_feed(docs_dir: Path, episodes: list[dict]) -> None:
         raise SystemExit("環境変数 PODCAST_BASE_URL を設定してください (例: https://user.github.io/repo)")
 
     title = os.environ.get("PODCAST_TITLE", DEFAULT_TITLE)
+    owner_name = os.environ.get("PODCAST_OWNER_NAME", DEFAULT_OWNER_NAME)
+    owner_email = os.environ.get("PODCAST_OWNER_EMAIL", DEFAULT_OWNER_EMAIL)
+    artwork_url = f"{base_url}/{ARTWORK_FILENAME}"
 
     items_xml = []
     for e in episodes:
@@ -130,7 +154,17 @@ def _write_feed(docs_dir: Path, episodes: list[dict]) -> None:
     <link>{escape(base_url)}</link>
     <language>ja-jp</language>
     <description>{escape(DEFAULT_DESCRIPTION)} {escape(VOICE_CREDIT)}</description>
+    <image>
+      <url>{escape(artwork_url)}</url>
+      <title>{escape(title)}</title>
+      <link>{escape(base_url)}</link>
+    </image>
+    <itunes:image href="{escape(artwork_url)}"/>
     <itunes:author>{escape(DEFAULT_AUTHOR)}</itunes:author>
+    <itunes:owner>
+      <itunes:name>{escape(owner_name)}</itunes:name>
+      <itunes:email>{escape(owner_email)}</itunes:email>
+    </itunes:owner>
     <itunes:explicit>false</itunes:explicit>
     <itunes:category text="Technology"/>
     {"".join(items_xml)}
