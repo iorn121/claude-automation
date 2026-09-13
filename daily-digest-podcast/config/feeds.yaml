@@ -1,0 +1,43 @@
+# 収集対象のRSSフィード一覧
+# このファイルは tools/feeds_editor.py（ブラウザUI）から編集・保存できます。
+# 記事のジャンル分けはフィード単位ではなく、記事ごとに本文のタグ・タイトルから
+# 自動で判定されます（config/label_mapping.yaml、絞り込みは config/labels.yaml）。
+# enabled: false にすると、削除せずに一時的に収集対象から外せます。
+
+feeds:
+  - name: "ITmedia AI+"
+    url: "https://rss.itmedia.co.jp/rss/2.0/aiplus.xml"
+    enabled: true
+  - name: "Google AI Blog"
+    url: "https://blog.google/technology/ai/rss/"
+    enabled: true
+  - name: "Hacker News (AI関連)"
+    url: "https://hnrss.org/newest?q=AI+OR+LLM"
+    enabled: true
+  - name: "Zenn トレンド"
+    url: "https://zenn.dev/feed"
+    enabled: true
+  - name: "Qiita 人気の投稿"
+    url: "https://qiita.com/popular-items/feed"
+    enabled: true
+  - name: "dev.to"
+    url: "https://dev.to/feed"
+    enabled: true
+  - name: "ITmedia News"
+    url: "https://rss.itmedia.co.jp/rss/2.0/itmedia_news.xml"
+    enabled: true
+  - name: "Ars Technica"
+    url: "https://feeds.arstechnica.com/arstechnica/index"
+    enabled: true
+  - name: "The Hacker News"
+    url: "https://feeds.feedburner.com/TheHackersNews"
+    enabled: true
+  - name: "JPCERT/CC 注意喚起"
+    url: "https://www.jpcert.or.jp/rss/jpcert.rdf"
+    enabled: true
+
+# 何時間以内に公開された記事を対象にするか（毎日1回の実行を想定し、余裕を持たせて26時間）
+lookback_hours: 26
+
+# 1フィードあたり最大で拾う記事数（多すぎると台本が長くなりすぎるため）
+max_articles_per_feed: 6

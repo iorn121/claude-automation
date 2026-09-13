@@ -36,3 +36,6 @@ Thumbs.db
 
 # launchd ログ
 launchd/*.log
+token.json.bak
+*.bak
+launchd/last-run.json

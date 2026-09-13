@@ -1,6 +1,6 @@
-notion-client
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client
-python-dotenv
+notion-client==2.2.1
+google-auth==2.34.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.151.0
+python-dotenv==1.0.1

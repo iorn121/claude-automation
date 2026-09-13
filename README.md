@@ -1,15 +1,8 @@
 # claude-automation
 
-Notion × Claude Code (CLI) × Google カレンダー × Google Tasks（マイタスク）による毎朝の自動スケジューリング。
+Notion × Claude Code (CLI) × Google カレンダー × Google Tasks（マイタスク）を使った、タスク自動スケジューリングの実験プロジェクト。
 
-- **朝 7:00** — Notion のタスクを取得 → ローカル Claude Code が見積もり＆配置 → Google カレンダーに `🤖` 付きイベントを追加 → **同じスケジュール対象のタスク**を Google Tasks（マイタスク）にも登録（notes に Notion page ID を埋め込む）
-- **夜 22:00** — マイタスクのチェック状態を確認し、ユーザーがチェックしたタスクに対応する Notion を「完了」に更新
-
-マイタスクには **Claude が今日スケジュールしたタスクのみ**が並ぶ。前日マイタスクに残っていた未スケジュールタスクは、その日のスケジュールに含まれていなければ自動削除される（チェック済みは触らない）。
-
-完了判定はユーザーの**明示的なチェック**を根拠にする（Claude による推測ではない）。マイタスクにはモバイル / ウェブ / カレンダー画面右側のタスクパネル等から手軽にチェックを入れられる。
-
-**Anthropic API キー / 課金は不要**（ローカル Claude Code を使うため）。代わりに **GitHub Actions では動かせない**（CLI と Claude Code セッションが Runner にないため）。
+> **お知らせ（2026-09）:** 毎朝/毎夜の自動実行（`schedule.py` / `review.py` / launchd cron設定）は、Google OAuth トークン切れ（`invalid_grant`）で動作しなくなっていたため削除しました。現在はセットアップ・認証・疎通確認まわりのスクリプト（`auth_google.py` / `check.py` / `notify.py` / `status.py`）のみが残っています。自動スケジューリング自体を復活させる場合は、Google 再認証（`auth_google.py`）とスケジューリングロジックの再実装が必要です。
 
 ## セットアップ
 
@@ -19,6 +12,17 @@ Notion × Claude Code (CLI) × Google カレンダー × Google Tasks（マイ�
 git clone https://github.com/iorn121/claude-automation.git
 cd claude-automation
 ```
+
+### 2. Python 3.11+ と仮想環境を準備
+
+```bash
+python3.11 --version
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+```
+
+`python3.11` がない場合は `python3` で代用可（3.11以上を推奨）。
 
 ### 2. 依存関係をインストール
 
@@ -72,84 +76,19 @@ python scripts/auth_google.py
 
 ブラウザで認証 → `token.json` が生成される。スコープは `calendar` と `tasks` の2つ。
 
+> 補足: `scripts/auth_google.py` はローカル初期認証用です。GitHub Secrets への格納案内は「将来クラウド運用する場合」の参考情報で、現状は不要です。
+
 > 既存の `token.json` がある場合（カレンダーのみ対応の古い版）は、`auth_google.py` を再実行するとスコープ不足を検出して再認証を促す。
 
 ### 7. ローカルで動作確認
 
-まず疎通だけ確認（書き込みなし）:
+疎通だけ確認（書き込みなし）:
 
 ```bash
 python scripts/check.py
 ```
 
-`✨ すべてOK!` が出たら本実行:
-
-```bash
-python scripts/schedule.py
-```
-
-完了レビュー（更新なしで確認）:
-
-```bash
-python scripts/review.py --dry-run
-```
-
-問題なければ本実行:
-
-```bash
-python scripts/review.py
-```
-
-### 8. 毎日の自動実行（launchd）
-
-**朝のスケジュール（7:00）**
-
-`launchd/com.iorn.claude-automation.plist` を `~/Library/LaunchAgents/` にコピーして起動する。
-
-```bash
-cp launchd/com.iorn.claude-automation.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.iorn.claude-automation.plist
-```
-
-手動で1回流したい時:
-
-```bash
-launchctl start com.iorn.claude-automation
-```
-
-ログ:
-
-```bash
-tail -f launchd/stdout.log launchd/stderr.log
-```
-
-アンインストール:
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.iorn.claude-automation.plist
-rm ~/Library/LaunchAgents/com.iorn.claude-automation.plist
-```
-
-**夜の完了レビュー（22:00）**
-
-```bash
-cp launchd/com.iorn.claude-automation-review.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.iorn.claude-automation-review.plist
-```
-
-手動実行:
-
-```bash
-launchctl start com.iorn.claude-automation-review
-```
-
-ログ:
-
-```bash
-tail -f launchd/review-stdout.log launchd/review-stderr.log
-```
-
-**注意:** plist 内の Python パス・プロジェクトパス・PATH は環境に合わせて編集してください（`which python3` / `which claude` で確認）。
+> `schedule.py` / `review.py` / launchd による自動実行は削除済みです（上記のお知らせ参照）。
 
 ## ファイル構成
 
@@ -158,56 +97,13 @@ claude-automation/
 ├── .env.example
 ├── .gitignore
 ├── README.md
-├── launchd/
-│   ├── com.iorn.claude-automation.plist        # 毎朝 7:00
-│   └── com.iorn.claude-automation-review.plist # 毎夜 22:00
 ├── requirements.txt
 └── scripts/
     ├── auth_google.py   # 初回のみ: Google OAuth トークン生成（calendar + tasks）
     ├── check.py         # セットアップ確認（read-only）
-    ├── schedule.py      # 朝: Notion → Claude → Calendar + マイタスク登録
-    ├── review.py        # 夜: マイタスクのチェック状態 → Notion 完了に同期
     ├── notify.py        # macOS 通知センターへの通知ヘルパー（共通）
-    └── status.py        # 今日の自動実行状況を確認
+    └── status.py        # （旧）自動実行状況の確認。参照先の launchd/last-run.json は削除済みのため現状は使えません
 ```
-
-## 実行状況の確認
-
-```bash
-python scripts/status.py
-```
-
-`launchd/last-run.json` を読んで、当日の朝/夜ジョブが走ったか、何件処理したか、エラーがあったかを表示する。
-
-`schedule.py` / `review.py` は完了時に macOS 通知センターに結果を出すので、見逃しにくい。初回実行時に「通知の許可」を求められたら許可しておく。
-
-## Catch-up（実行漏れの救済）
-
-`StartCalendarInterval` の時刻に Mac がスリープしてたり電源 OFF だったりすると、launchd の標準動作だけでは:
-
-- **スリープ中** → 復帰時に自動で実行される（launchd の標準動作）
-- **シャットダウン中** → 失われる ❌
-
-これを救済するため、plist は `RunAtLoad=true` にしてあり、**Mac 起動直後（ジョブのロード時）にも一度走る**。多重実行を防ぐため、`schedule.py` / `review.py` は `last-run.json` を見て当日すでに `success` / `skipped` で終わっていればスキップする。
-
-強制再実行したい場合:
-
-```bash
-python scripts/schedule.py --force
-python scripts/review.py --force
-```
-
-## 仕組み（マイタスク連携）
-
-- `schedule.py` がマイタスクを作成する際、`notes` 欄の先頭に `notion_id: <Notion page id>` を埋め込む
-- マイタスクに登録するのは **Claude が今日スケジュールした Notion タスクのみ**（タイトル先頭に `⏰ HH:MM ` プレフィックス、サブタスク分割時は最早の開始時刻）
-- **期限は常に当日固定**。マイタスクは毎日作り直す運用なので、Notion の `期限` プロパティは Claude スケジューラの優先度判定にだけ使い、マイタスク側の due には反映しない
-- 既にマイタスクに同じ `notion_id` が存在すれば差分がある場合のみ patch で更新（タイトル/notes/期限）
-- 既存マイタスク（notion_id 付き・未チェック）のうち今日のスケジュール対象外のものは **delete API で削除**。チェック済みは `showCompleted=False` で取得していないため触らない
-- `review.py` は `notes` から `notion_id` を読み取り、マイタスクが `completed` 状態のものに対応する Notion タスクを「完了」に更新する
-- マイタスクに残っている（未チェック）タスクは触らない（次回スケジュールから外れれば削除される）
-
-> ⚠️ Google Tasks API は `due` の時刻部分を保存しないため、API 経由で時刻指定したタスクは作れません。代わりにタイトル先頭に `⏰ HH:MM` を付けることで「いつのタスクか」が一覧で見えるようにしています。
 
 ## ⚠️ セキュリティ
 
@@ -216,3 +112,20 @@ python scripts/review.py --force
 ## ライセンス
 
 Private use.
+
+---
+
+## 改善点バックログ
+
+> 2026-09 追記: 自動スケジューリング機能（`schedule.py` / `review.py` / launchd）の削除に伴い、それらに紐づく項目は整理済み。残っているのは認証・セットアップ確認まわりの改善案のみ。
+
+- [ ] `[P1]` `.gitignore` に `token.json.bak` 追加
+- [ ] `[P1]` リポジトリ履歴に秘密情報がないか確認手順を README に
+- [ ] `[P2]` `auth_google.py` の GitHub Secrets 案内を「将来用」と明記（GHA なし）
+- [ ] `[P2]` OAuth `credentials.json` の配置・権限・ローテーション手順
+- [ ] `[P2]` OAuth トークンリフレッシュ失敗時の再認証フロー
+- [ ] `[P3]` `.env` 各キーのバリデーションを `check.py` に
+- [ ] `[P1]` `requirements.txt` の依存バージョンを pin
+- [ ] `[P2]` 正式 LICENSE ファイル追加
+- [ ] `[P2]` Dependabot（pip）導入
+- [ ] `[P3]` pre-commit（ruff/mypy）+ 単体テスト整備
