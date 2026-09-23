@@ -32,9 +32,12 @@ log = logging.getLogger("synthesize")
 DEFAULT_VOICEVOX_URL = os.environ.get("VOICEVOX_URL", "http://127.0.0.1:50021")
 DEFAULT_SPEAKER = int(os.environ.get("VOICEVOX_SPEAKER", "8"))
 MAX_CHUNK_LEN = 120  # 1リクエストあたりの文字数目安（長すぎると合成が不安定/遅くなるため分割する）
+# 同一ニュース内の文チャンク間（短い間）
 SILENCE_BETWEEN_CHUNKS_MS = 250
 # 読み上げマスタ（config/reading_dict.yaml）。VOICEVOX直前に英字固有名詞などをカタカナへ置換する。
 READING_DICT_PATH = Path(__file__).resolve().parent.parent / "config" / "reading_dict.yaml"
+# ニュース／段落の区切り（次の話題へ移るときの間）。最低2〜3秒を確保
+SILENCE_BETWEEN_NEWS_MS = int(os.environ.get("SILENCE_BETWEEN_NEWS_MS", "2500"))
 
 
 def wait_for_engine(base_url: str, timeout_sec: int = 120) -> None:
@@ -49,6 +52,12 @@ def wait_for_engine(base_url: str, timeout_sec: int = 120) -> None:
             pass
         time.sleep(2)
     raise RuntimeError(f"VOICEVOX ENGINE ({base_url}) に接続できませんでした")
+
+
+def split_into_news_blocks(text: str) -> list[str]:
+    """空行で区切られたニュース／セクション単位のブロックに分割する。"""
+    blocks = re.split(r"\n\s*\n+", text.strip())
+    return [b.strip() for b in blocks if b.strip()]
 
 
 def split_script(text: str, max_len: int = MAX_CHUNK_LEN) -> list[str]:
@@ -67,6 +76,29 @@ def split_script(text: str, max_len: int = MAX_CHUNK_LEN) -> list[str]:
     if buf:
         chunks.append(buf)
     return chunks
+
+
+def plan_synthesis(script: str, max_len: int = MAX_CHUNK_LEN) -> list[tuple[str, int]]:
+    """台本を (読み上げテキスト, 直後の無音ms) の列に展開する。
+
+    同一ニュース内の文チャンク間は短い無音、ニュース（段落）境界では長い無音を入れる。
+    末尾チャンクの直後の無音は 0。
+    """
+    blocks = split_into_news_blocks(script)
+    plan: list[tuple[str, int]] = []
+    for bi, block in enumerate(blocks):
+        chunks = split_script(block, max_len=max_len)
+        for ci, chunk in enumerate(chunks):
+            is_last_chunk_in_block = ci == len(chunks) - 1
+            is_last_block = bi == len(blocks) - 1
+            if is_last_chunk_in_block and is_last_block:
+                silence_ms = 0
+            elif is_last_chunk_in_block:
+                silence_ms = SILENCE_BETWEEN_NEWS_MS
+            else:
+                silence_ms = SILENCE_BETWEEN_CHUNKS_MS
+            plan.append((chunk, silence_ms))
+    return plan
 
 
 def synthesize_chunk(base_url: str, text: str, speaker: int) -> bytes:
@@ -88,6 +120,23 @@ def synthesize_chunk(base_url: str, text: str, speaker: int) -> bytes:
     return synth_res.content  # WAVバイト列
 
 
+def assemble_from_plan(
+    plan: list[tuple[str, int]],
+    wav_by_index: list[bytes],
+) -> AudioSegment:
+    """plan と対応する WAV バイト列から最終 AudioSegment を組み立てる。"""
+    if len(plan) != len(wav_by_index):
+        raise ValueError("plan と wav_by_index の長さが一致しません")
+
+    combined = AudioSegment.silent(duration=0)
+    for (_text, silence_ms), wav_bytes in zip(plan, wav_by_index):
+        segment = AudioSegment.from_file(io.BytesIO(wav_bytes), format="wav")
+        combined += segment
+        if silence_ms > 0:
+            combined += AudioSegment.silent(duration=silence_ms)
+    return combined
+
+
 def synthesize_script(
     script: str,
     out_path: str | Path,
@@ -105,12 +154,25 @@ def synthesize_script(
 
     combined = AudioSegment.silent(duration=0)
     silence = AudioSegment.silent(duration=SILENCE_BETWEEN_CHUNKS_MS)
+    plan = plan_synthesis(script)
+    log.info(
+        "音声合成対象: %d チャンク (ニュース区切り無音=%dms)",
+        len(plan),
+        SILENCE_BETWEEN_NEWS_MS,
+    )
 
-    for i, chunk in enumerate(chunks, start=1):
-        log.info("合成中 (%d/%d): %s", i, len(chunks), chunk[:30])
-        wav_bytes = synthesize_chunk(base_url, chunk, speaker)
-        segment = AudioSegment.from_file(io.BytesIO(wav_bytes), format="wav")
-        combined += segment + silence
+    wavs: list[bytes] = []
+    for i, (chunk, silence_ms) in enumerate(plan, start=1):
+        log.info(
+            "合成中 (%d/%d, 直後無音=%dms): %s",
+            i,
+            len(plan),
+            silence_ms,
+            chunk[:30],
+        )
+        wavs.append(synthesize_chunk(base_url, chunk, speaker))
+
+    combined = assemble_from_plan(plan, wavs)
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
