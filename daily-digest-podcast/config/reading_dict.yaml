@@ -1,0 +1,84 @@
+# TTS（VOICEVOX）向けの読み上げマスタデータ。
+# synthesize.py が台本を音声合成する直前に、surface を reading（カタカナ等）へ置換する。
+#
+# 追加方法:
+#   - surface: 台本に現れる表記（英字は大文字小文字を区別しない）
+#   - reading: 読み上げたいカタカナ（またはひらがな）
+#   - 英数字の surface は単語境界でマッチ（例: "Qiita" は "Qiita人気" にもマッチし、
+#     "NotQiita" のような連結英字にはマッチしない）
+#   - 長い surface から優先して置換する（部分一致の食い合いを防ぐ）
+#
+# Issue #3: 「Qiita」が「ちーた」と読まれていた → 「キータ」に固定。
+
+readings:
+  # --- Issue #3 報告 ---
+  - surface: Qiita
+    reading: キータ
+
+  # --- 収集フィード／台本に出やすい固有名詞 ---
+  - surface: GitHub
+    reading: ギットハブ
+  - surface: GitLab
+    reading: ギットラボ
+  - surface: Zenn
+    reading: ゼン
+  - surface: "dev.to"
+    reading: デブドットティーオー
+  - surface: ITmedia
+    reading: アイティーメディア
+  - surface: "Hacker News"
+    reading: ハッカーニュース
+  - surface: "Ars Technica"
+    reading: アーズテクニカ
+  - surface: "The Hacker News"
+    reading: ザハッカーニュース
+  - surface: JPCERT
+    reading: ジェイピーサート
+  - surface: "JPCERT/CC"
+    reading: ジェイピーサートシーシー
+
+  # --- AI / クラウド系で誤読されやすいもの ---
+  - surface: ChatGPT
+    reading: チャットジーピーティー
+  - surface: OpenAI
+    reading: オープンエーアイ
+  - surface: Claude
+    reading: クロード
+  - surface: Gemini
+    reading: ジェミニ
+  - surface: Hugging Face
+    reading: ハギングフェイス
+  - surface: HuggingFace
+    reading: ハギングフェイス
+  - surface: PyTorch
+    reading: パイトーチ
+  - surface: TensorFlow
+    reading: テンソルフロー
+  - surface: LangChain
+    reading: ラングチェーン
+  - surface: Anthropic
+    reading: アンスロピック
+  - surface: VOICEVOX
+    reading: ボイスボックス
+
+  # --- 開発用語（短い曖昧語 AI/Go/PR 等は誤置換しやすいので入れない） ---
+  - surface: TypeScript
+    reading: タイプスクリプト
+  - surface: JavaScript
+    reading: ジャバスクリプト
+  - surface: GraphQL
+    reading: グラフキューエル
+  - surface: PostgreSQL
+    reading: ポストグレエスキューエル
+  - surface: Kubernetes
+    reading: クバネティス
+  - surface: Cloudflare
+    reading: クラウドフレア
+  - surface: Next.js
+    reading: ネクストジェイエス
+  - surface: Node.js
+    reading: ノードジェイエス
+  - surface: GitHub Actions
+    reading: ギットハブアクションズ
+  - surface: GitHub Pages
+    reading: ギットハブページズ
