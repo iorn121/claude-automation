@@ -8,6 +8,10 @@
   - 1日1回の実行なら十分すぎるほど余裕がある
 
 環境変数 GEMINI_API_KEY が必要 (https://ai.google.dev で無料取得)。
+
+同じモデルが 503 (high demand) を返し続けることがある。その場合は待って同じモデルを
+叩き直すだけでは復旧しないため、数回失敗したら別モデルへ切り替える。
+切り替え先は環境変数 GEMINI_FALLBACK_MODELS（カンマ区切り）で上書きできる。
 """
 from __future__ import annotations
 
@@ -27,13 +31,15 @@ from google.genai import errors as genai_errors
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("summarize")
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+DEFAULT_MODEL = "gemini-3.6-flash"
+# 3.6 が混雑しているときでも、世代の違う Flash は通ることが多い。
+DEFAULT_FALLBACK_MODELS = ("gemini-3.5-flash", "gemini-2.5-flash")
 MAX_CHARS_PER_ARTICLE = 1500  # 1記事あたり要約対象にするテキストの上限（トークン節約）
 
-# Gemini側が一時的に混雑している(503 UNAVAILABLE)ことがあるため、
-# 指数バックオフで数回リトライする(1日1回の実行なので多少待っても問題ない)。
-MAX_RETRIES = 5
-RETRY_BACKOFF_SECONDS = [15, 30, 60, 120, 180]
+# 同一モデルへのリトライは短く留め、続いても次のモデルへ移る。
+# 2026-09-23 の手動実行は gemini-3.6-flash への 5 回 (約5分) がすべて 503 だった。
+ATTEMPTS_PER_MODEL = 2
+RETRY_BACKOFF_SECONDS = (20,)
 
 SYSTEM_PROMPT = """\
 あなたは、エンジニア向けの日刊ニュースPodcastの構成作家 兼 パーソナリティです。
@@ -70,40 +76,98 @@ def _build_user_prompt(articles: list[dict[str, Any]], target_date: str) -> str:
     return "\n".join(lines)
 
 
-def summarize(articles: list[dict[str, Any]], target_date: str, api_key: str) -> str:
+def resolve_models(models: list[str] | None = None) -> list[str]:
+    """使うモデルを優先順に返す。先頭が失敗し続けたとき、後ろへ切り替える。"""
+    if models is not None:
+        return _dedupe(models)
+
+    primary = os.environ.get("GEMINI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    raw = os.environ.get("GEMINI_FALLBACK_MODELS")
+    if raw is None:
+        fallbacks = list(DEFAULT_FALLBACK_MODELS)
+    else:
+        fallbacks = [part.strip() for part in raw.split(",") if part.strip()]
+    return _dedupe([primary, *fallbacks])
+
+
+def _dedupe(models: list[str]) -> list[str]:
+    seen: list[str] = []
+    for model in models:
+        name = model.strip()
+        if name and name not in seen:
+            seen.append(name)
+    return seen
+
+
+def summarize(
+    articles: list[dict[str, Any]],
+    target_date: str,
+    api_key: str,
+    *,
+    client: Any = None,
+    models: list[str] | None = None,
+    sleep: Any = time.sleep,
+) -> str:
     if not articles:
         return f"{target_date}分のニュースは収集できませんでした。対象フィードの設定を確認してください。"
 
-    client = genai.Client(api_key=api_key)
+    if client is None:
+        client = genai.Client(api_key=api_key)
     user_prompt = _build_user_prompt(articles, target_date)
+    model_list = resolve_models(models)
+    if not model_list:
+        raise RuntimeError("使用する Gemini モデルが指定されていません")
 
     last_error: Exception | None = None
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=user_prompt,
-                config={
-                    "system_instruction": SYSTEM_PROMPT,
-                    "temperature": 0.6,
-                },
-            )
-            script = (response.text or "").strip()
-            if not script:
-                raise RuntimeError("Gemini APIから空の応答が返りました")
-            return script
-        except genai_errors.ServerError as e:
-            last_error = e
-            if attempt >= MAX_RETRIES:
+    for index, model in enumerate(model_list):
+        for attempt in range(1, ATTEMPTS_PER_MODEL + 1):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=user_prompt,
+                    config={
+                        "system_instruction": SYSTEM_PROMPT,
+                        "temperature": 0.6,
+                    },
+                )
+                script = (response.text or "").strip()
+                if not script:
+                    raise RuntimeError("Gemini APIから空の応答が返りました")
+                if model != model_list[0]:
+                    log.warning("モデル %s が使えなかったため %s で台本を生成しました", model_list[0], model)
+                return script
+            except genai_errors.ServerError as e:
+                last_error = e
+                if attempt < ATTEMPTS_PER_MODEL:
+                    wait_sec = RETRY_BACKOFF_SECONDS[min(attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1)]
+                    log.warning(
+                        "Gemini APIが一時的に利用できません(model=%s, %s回目/%s回): %s -- %d秒待ってリトライします",
+                        model, attempt, ATTEMPTS_PER_MODEL, e, wait_sec,
+                    )
+                    sleep(wait_sec)
+                    continue
+                _log_model_switch(model_list, index, e)
                 break
-            wait_sec = RETRY_BACKOFF_SECONDS[min(attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1)]
-            log.warning(
-                "Gemini APIが一時的に利用できません(%s回目/%s回): %s -- %d秒待ってリトライします",
-                attempt, MAX_RETRIES, e, wait_sec,
-            )
-            time.sleep(wait_sec)
+            except genai_errors.ClientError as e:
+                # モデル名が無効なときだけ次へ進む。プロンプト不正などはリトライしない。
+                if getattr(e, "code", None) == 404 and index < len(model_list) - 1:
+                    last_error = e
+                    log.warning("モデル %s が見つからないため次のモデルへ切り替えます: %s", model, e)
+                    break
+                raise
 
-    raise RuntimeError(f"Gemini APIへの要約リクエストが{MAX_RETRIES}回とも失敗しました: {last_error}")
+    raise RuntimeError(
+        f"Gemini APIへの要約リクエストが失敗しました（試行モデル: {', '.join(model_list)}）: {last_error}"
+    )
+
+
+def _log_model_switch(model_list: list[str], index: int, error: Exception) -> None:
+    if index >= len(model_list) - 1:
+        return
+    log.warning(
+        "モデル %s が %s 回とも失敗したため %s に切り替えます: %s",
+        model_list[index], ATTEMPTS_PER_MODEL, model_list[index + 1], error,
+    )
 
 
 def main() -> None:
