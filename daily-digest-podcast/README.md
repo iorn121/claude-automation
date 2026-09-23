@@ -9,7 +9,7 @@ GitHub Pages + Podcast RSSで配信、を毎日自動実行する仕組みです
 
 | 役割 | サービス | 無料枠 |
 |---|---|---|
-| 要約・台本生成 | Gemini API (gemini-3.6-flash) | 1日1,500リクエストまで無料（1日1回の実行なら余裕） |
+| 要約・台本生成 | Gemini API (gemini-3.6-flash。混雑時は 3.5 / 2.5 Flash に自動切替) | 1日1,500リクエストまで無料（1日1回の実行なら余裕） |
 | 音声合成 | VOICEVOX ENGINE | 完全無料・商用利用可（要クレジット表記） |
 | 実行基盤 | GitHub Actions | Publicリポジトリなら無制限 / Privateなら月2,000分無料 |
 | ホスティング | GitHub Pages | 無料 |
@@ -122,6 +122,7 @@ readings:
 
 - 記事本文が取得できないサイトがある（ペイウォール・JS描画のみのサイトなど）→ `config/feeds.yaml` から除外するか、個別に本文抽出ロジックを足す必要あり。
 - Gemini無料枠は1分あたり15リクエストが上限。1日1回の実行なら問題にならない想定。
+- `gemini-3.6-flash` が 503 (high demand) を返し続けることがある。同一モデルを2回試したあと `gemini-3.5-flash`、続いて `gemini-2.5-flash` に切り替える。切り替え先は環境変数 `GEMINI_FALLBACK_MODELS`（カンマ区切り。空なら切り替えなし）で変更できる。
 - 音質・自然さを上げたくなったら、`synthesize.py` をOpenAI TTSやGoogle Cloud TTSに差し替える（設計調査ドキュメントの比較表を参照）。
 - より自然な聴き心地にしたい場合、1人語りではなく2話者の対話形式にすると聞き疲れしにくいと言われています（将来的な改善候補）。
 - 読み上げマスタに無い語は従来どおり VOICEVOX 任せです。気になる誤読があれば `config/reading_dict.yaml` に追記してください。
