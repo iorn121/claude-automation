@@ -24,6 +24,8 @@ from pathlib import Path
 import requests
 from pydub import AudioSegment
 
+from reading_dict import apply_readings
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("synthesize")
 
@@ -31,6 +33,8 @@ DEFAULT_VOICEVOX_URL = os.environ.get("VOICEVOX_URL", "http://127.0.0.1:50021")
 DEFAULT_SPEAKER = int(os.environ.get("VOICEVOX_SPEAKER", "8"))
 MAX_CHUNK_LEN = 120  # 1リクエストあたりの文字数目安（長すぎると合成が不安定/遅くなるため分割する）
 SILENCE_BETWEEN_CHUNKS_MS = 250
+# 読み上げマスタ（config/reading_dict.yaml）。VOICEVOX直前に英字固有名詞などをカタカナへ置換する。
+READING_DICT_PATH = Path(__file__).resolve().parent.parent / "config" / "reading_dict.yaml"
 
 
 def wait_for_engine(base_url: str, timeout_sec: int = 120) -> None:
@@ -89,9 +93,14 @@ def synthesize_script(
     out_path: str | Path,
     base_url: str = DEFAULT_VOICEVOX_URL,
     speaker: int = DEFAULT_SPEAKER,
+    reading_dict_path: str | Path | None = READING_DICT_PATH,
 ) -> None:
     wait_for_engine(base_url)
-    chunks = split_script(script)
+    # Issue #3: Qiita 等が誤読されないよう、マスタの読みに置換してから合成する
+    spoken = apply_readings(script, dict_path=reading_dict_path)
+    if spoken != script:
+        log.info("読み上げマスタを適用しました（%s）", reading_dict_path)
+    chunks = split_script(spoken)
     log.info("音声合成対象: %d チャンク", len(chunks))
 
     combined = AudioSegment.silent(duration=0)

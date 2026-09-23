@@ -100,9 +100,28 @@ python tools/feeds_editor.py
 **VOICEVOXの利用規約により、使用したキャラクターのクレジット表記が必要です。**
 `src/publish.py` の `VOICE_CREDIT` を、実際に使う話者名に書き換えてください。
 
+## 読み上げマスタ（誤読対策）
+
+VOICEVOX は英字の固有名詞を誤読することがあります（例: `Qiita` →「ちーた」）。
+`config/reading_dict.yaml` に表記と読み（カタカナ）の対応を書いておくと、音声合成の直前に自動で置換されます。
+
+```yaml
+readings:
+  - surface: Qiita
+    reading: キータ
+  - surface: GitHub
+    reading: ギットハブ
+```
+
+- 英字の `surface` は大文字小文字を区別しません。
+- 長い表記から先に置換します（`GitHub Actions` が `GitHub` より優先）。
+- 台本ファイル（`data/script.txt`）自体は元表記のまま残し、合成時だけ読みを適用します。
+- ユニットテスト: `cd daily-digest-podcast && python -m unittest tests.test_reading_dict -v`
+
 ## 既知の制限・今後の改善候補
 
 - 記事本文が取得できないサイトがある（ペイウォール・JS描画のみのサイトなど）→ `config/feeds.yaml` から除外するか、個別に本文抽出ロジックを足す必要あり。
 - Gemini無料枠は1分あたり15リクエストが上限。1日1回の実行なら問題にならない想定。
 - 音質・自然さを上げたくなったら、`synthesize.py` をOpenAI TTSやGoogle Cloud TTSに差し替える（設計調査ドキュメントの比較表を参照）。
 - より自然な聴き心地にしたい場合、1人語りではなく2話者の対話形式にすると聞き疲れしにくいと言われています（将来的な改善候補）。
+- 読み上げマスタに無い語は従来どおり VOICEVOX 任せです。気になる誤読があれば `config/reading_dict.yaml` に追記してください。
