@@ -94,11 +94,17 @@ python tools/feeds_editor.py
 
 ## 話者（声）を変更したい場合
 
+台本はホスト「つむぎ」＋コホスト「ずんだもん」の対話形式です。
 `GET http://127.0.0.1:50021/speakers` で話者一覧とIDが取得できます。
-環境変数 `VOICEVOX_SPEAKER` に好きなIDを設定してください（デフォルトは8=春日部つむぎ ノーマル）。
+
+| 環境変数 | 役割 | デフォルト |
+|---|---|---|
+| `VOICEVOX_SPEAKER_HOST` | ホスト | 8（春日部つむぎ） |
+| `VOICEVOX_SPEAKER_GUEST` | ゲスト | 3（ずんだもん） |
+| `VOICEVOX_SPEAKER` | ホストのフォールバック | 8 |
 
 **VOICEVOXの利用規約により、使用したキャラクターのクレジット表記が必要です。**
-`src/publish.py` の `VOICE_CREDIT` を、実際に使う話者名に書き換えてください。
+話者を変えたら `src/publish.py` の `VOICE_CREDIT` も合わせて書き換えてください。
 
 ## 読み上げマスタ（誤読対策）
 
