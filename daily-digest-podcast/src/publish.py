@@ -34,8 +34,10 @@ DEFAULT_AUTHOR = "Personal Digest Bot"
 # Spotify/Apple Podcastsの審査に必要なオーナー情報（環境変数で上書き可能）
 DEFAULT_OWNER_NAME = "Iori"
 DEFAULT_OWNER_EMAIL = "wmt.tkn.121@gmail.com"
-# VOICEVOXクレジット表記（使用した話者に合わせて書き換えてください）
-VOICE_CREDIT = "この番組の音声には VOICEVOX を使用しています。"
+# VOICEVOXクレジット表記（ホスト=春日部つむぎ / ゲスト=ずんだもん）
+VOICE_CREDIT = (
+    "この番組の音声には VOICEVOX:春日部つむぎ および VOICEVOX:ずんだもん を使用しています。"
+)
 
 # 番組アートワーク: リポジトリに同梱している assets/artwork.jpg を
 # 初回公開時に docs/artwork.jpg としてコピーする（Spotify/Apple Podcastsの

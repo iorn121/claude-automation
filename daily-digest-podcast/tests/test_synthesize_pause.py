@@ -45,13 +45,13 @@ def test_plan_synthesis_inserts_long_silence_between_news() -> None:
 
     assert len(plan) >= 3
     # ニュース境界の直後無音は SILENCE_BETWEEN_NEWS_MS 以上
-    long_gaps = [s for _, s in plan if s >= syn.SILENCE_BETWEEN_NEWS_MS]
+    long_gaps = [s for _, _, s in plan if s >= syn.SILENCE_BETWEEN_NEWS_MS]
     assert len(long_gaps) >= 2
     assert all(s == syn.SILENCE_BETWEEN_NEWS_MS for s in long_gaps)
     # 末尾は無音0
-    assert plan[-1][1] == 0
+    assert plan[-1][2] == 0
     # 同一ニュース内に複数チャンクがある場合は短い無音もある
-    short_gaps = [s for _, s in plan if 0 < s < syn.SILENCE_BETWEEN_NEWS_MS]
+    short_gaps = [s for _, _, s in plan if 0 < s < syn.SILENCE_BETWEEN_NEWS_MS]
     # 文が短いと1チャンクにまとまることもあるので、短無音は0以上でOK
     assert all(s == syn.SILENCE_BETWEEN_CHUNKS_MS for s in short_gaps)
 
@@ -60,7 +60,7 @@ def test_plan_synthesis_single_block_has_no_news_gap() -> None:
     script = "一文だけです。"
     plan = syn.plan_synthesis(script)
     assert len(plan) == 1
-    assert plan[0][1] == 0
+    assert plan[0][2] == 0
 
 
 def test_assemble_from_plan_duration_includes_news_silence() -> None:
@@ -69,9 +69,9 @@ def test_assemble_from_plan_duration_includes_news_silence() -> None:
     script = "話題Aです。\n\n話題Bです。\n\n話題Cです。"
     plan = syn.plan_synthesis(script)
     assert len(plan) == 3
-    assert plan[0][1] == syn.SILENCE_BETWEEN_NEWS_MS
-    assert plan[1][1] == syn.SILENCE_BETWEEN_NEWS_MS
-    assert plan[2][1] == 0
+    assert plan[0][2] == syn.SILENCE_BETWEEN_NEWS_MS
+    assert plan[1][2] == syn.SILENCE_BETWEEN_NEWS_MS
+    assert plan[2][2] == 0
 
     wavs = [_silent_wav_bytes(speech_ms) for _ in plan]
     audio = syn.assemble_from_plan(plan, wavs)
@@ -79,7 +79,6 @@ def test_assemble_from_plan_duration_includes_news_silence() -> None:
     expected_ms = speech_ms * 3 + syn.SILENCE_BETWEEN_NEWS_MS * 2
     # pydub の長さはフレーム丸めで ±数ms ずれることがある
     assert abs(len(audio) - expected_ms) <= 20
-
 
 def test_silence_between_news_is_at_least_two_seconds() -> None:
     assert syn.SILENCE_BETWEEN_NEWS_MS >= 2000
