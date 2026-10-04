@@ -39,3 +39,5 @@ launchd/*.log
 token.json.bak
 *.bak
 launchd/last-run.json
+
+.harness/
