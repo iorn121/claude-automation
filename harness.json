@@ -1,0 +1,15 @@
+{
+  "name": "claude-automation",
+  "automation": "unattended",
+  "model": "composer-2.5",
+  "specDir": "docs/specs",
+  "stack": "python",
+  "testing": { "profile": "batch" },
+  "commands": {
+    "install": null,
+    "verify": ["python3 -m unittest discover -s morning-echo-briefing/tests"]
+  },
+  "release": { "base": "main", "mode": "pull-request" },
+  "gates": { "afterSpecify": false, "beforeRelease": false },
+  "limits": { "verifyRetries": 2, "timeoutMs": 1800000 }
+}
