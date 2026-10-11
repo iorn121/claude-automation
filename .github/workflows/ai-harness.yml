@@ -1,0 +1,119 @@
+# スマホの GitHub アプリから Run workflow で起動する。
+# Secret: CURSOR_API_KEY
+# Variable: AI_HARNESS_REPOSITORY=iorn121/ai-harness
+# マージはしない。
+name: AI Harness
+
+on:
+  workflow_dispatch:
+    inputs:
+      brief:
+        description: 要件の概要
+        required: true
+        type: string
+      stage:
+        description: specify / implement / verify / release / all
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - specify
+          - implement
+          - verify
+          - release
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-harness-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  harness:
+    name: Requirements to pull request
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.issue.title, '[AI]') &&
+       (github.event.issue.author_association == 'OWNER' ||
+        github.event.issue.author_association == 'MEMBER' ||
+        github.event.issue.author_association == 'COLLABORATOR'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+    steps:
+      - name: Require Cursor API key
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          if [ -z "${CURSOR_API_KEY:-}" ]; then
+            echo "::error::Repository secret CURSOR_API_KEY is not set."
+            exit 1
+          fi
+
+      - name: Checkout product
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout harness
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.AI_HARNESS_REPOSITORY }}
+          ref: ${{ vars.AI_HARNESS_REF || 'main' }}
+          path: .ai-harness
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install harness
+        working-directory: .ai-harness
+        run: npm ci
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install product
+        run: pip install -r requirements.txt -r morning-echo-briefing/requirements.txt
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Write brief
+        env:
+          BRIEF_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.brief || '' }}
+        run: |
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            jq -r '.issue.title + "\n\n" + (.issue.body // "")' "$GITHUB_EVENT_PATH" > /tmp/harness-brief.md
+          else
+            printf '%s\n' "$BRIEF_INPUT" > /tmp/harness-brief.md
+          fi
+
+      - name: Run harness
+        working-directory: .ai-harness
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STAGE="${{ github.event_name == 'issues' && 'all' || github.event.inputs.stage }}"
+          node src/cli.mjs run --cwd "$GITHUB_WORKSPACE" --stage "$STAGE" --brief-file /tmp/harness-brief.md
+
+      - name: Upload spec
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-spec
+          path: |
+            docs/specs/**
+            .harness/run.json
+          if-no-files-found: ignore

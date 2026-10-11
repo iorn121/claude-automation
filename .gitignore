@@ -41,3 +41,4 @@ token.json.bak
 launchd/last-run.json
 
 .harness/
+.ai-harness/
