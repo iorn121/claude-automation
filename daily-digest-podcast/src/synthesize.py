@@ -43,8 +43,9 @@ MAX_CHUNK_LEN = 120  # 1リクエストあたりの文字数目安（長すぎ�
 SILENCE_BETWEEN_CHUNKS_MS = 250
 # 読み上げマスタ（config/reading_dict.yaml）。VOICEVOX直前に英字固有名詞などをカタカナへ置換する。
 READING_DICT_PATH = Path(__file__).resolve().parent.parent / "config" / "reading_dict.yaml"
-# ニュース／段落の区切り（次の話題へ移るときの間）。最低2〜3秒を確保
-SILENCE_BETWEEN_NEWS_MS = int(os.environ.get("SILENCE_BETWEEN_NEWS_MS", "2500"))
+# ニュース／段落の区切り（次の話題へ移るときの間）。
+# 2.5秒は間延びしやすいため、自然な話題切替の目安として 1.5秒を既定にする。
+SILENCE_BETWEEN_NEWS_MS = int(os.environ.get("SILENCE_BETWEEN_NEWS_MS", "1500"))
 
 # 対話台本の行頭タグ → 役割
 SPEAKER_TAG_ALIASES: dict[str, str] = {

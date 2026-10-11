@@ -80,6 +80,8 @@ def test_assemble_from_plan_duration_includes_news_silence() -> None:
     # pydub の長さはフレーム丸めで ±数ms ずれることがある
     assert abs(len(audio) - expected_ms) <= 20
 
-def test_silence_between_news_is_at_least_two_seconds() -> None:
-    assert syn.SILENCE_BETWEEN_NEWS_MS >= 2000
-    assert syn.SILENCE_BETWEEN_NEWS_MS <= 5000  # 極端に長くしない上限の目安
+def test_silence_between_news_default_is_natural_length() -> None:
+    """話題切替は文チャンク間より長く、旧既定(2.5秒)より短い自然な間にする。"""
+    assert syn.SILENCE_BETWEEN_NEWS_MS == 1500
+    assert syn.SILENCE_BETWEEN_NEWS_MS > syn.SILENCE_BETWEEN_CHUNKS_MS
+    assert syn.SILENCE_BETWEEN_NEWS_MS < 2500
