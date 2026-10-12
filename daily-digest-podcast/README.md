@@ -58,7 +58,7 @@ GitHub Pages + Podcast RSSで配信、を毎日自動実行する仕組みです
    - `https://<PODCAST_BASE_URL>/podcast.xml` をコピー
    - Overcast: 「Add URL」からペースト
    - Apple Podcasts: 「ライブラリ」→「番組を追加」→ URLを貼り付け
-   - 以降、毎朝6:00(JST)に新しいエピソードが自動追加されます。
+   - 新しいエピソードは、毎朝6:00(JST)より前に追加されます。起動予定は 0:17(JST) で、GitHub の定時が数時間遅れても6時前に終わる想定です。
 
 ## ローカルでの動作確認
 
