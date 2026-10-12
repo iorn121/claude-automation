@@ -16,8 +16,10 @@ name: Daily AI/Programming/Security Digest Podcast
 
 on:
   schedule:
-    # 21:00 UTC = 翌朝6:00 JST
-    - cron: "0 21 * * *"
+    # 15:17 UTC = 0:17 JST。毎時0分は GitHub Actions が混むので避けている。
+    # このリポジトリでは schedule の開始が最大約4時間40分遅れた。
+    # その遅れと生成の5〜10分を見込んでも、6:00 JST までには公開が終わる。
+    - cron: "17 15 * * *"
   workflow_dispatch: {} # Actionsタブから手動実行できるようにしておく（動作確認用）
 
 permissions:
