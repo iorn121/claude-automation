@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>毎日AI・プログラミング・セキュリティダイジェスト</title>
+    <link>https://iorn121.github.io/claude-automation</link>
+    <language>ja-jp</language>
+    <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。 この番組の音声には VOICEVOX:春日部つむぎ および VOICEVOX:ずんだもん を使用しています。</description>
+    <image>
+      <url>https://iorn121.github.io/claude-automation/artwork.jpg</url>
+      <title>毎日AI・プログラミング・セキュリティダイジェスト</title>
+      <link>https://iorn121.github.io/claude-automation</link>
+    </image>
+    <itunes:image href="https://iorn121.github.io/claude-automation/artwork.jpg"/>
+    <itunes:author>Personal Digest Bot</itunes:author>
+    <itunes:owner>
+      <itunes:name>Iori</itunes:name>
+      <itunes:email>wmt.tkn.121@gmail.com</itunes:email>
+    </itunes:owner>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Technology"/>
+    
+    <item>
+      <title>2026-10-30 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Fri, 30 Oct 2026 20:02:07 +0000</pubDate>
+      <guid isPermaLink="false">20261030</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261030.mp3" length="10560813" type="audio/mpeg"/>
+      <itunes:duration>00:10:59</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-29 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Thu, 29 Oct 2026 20:29:16 +0000</pubDate>
+      <guid isPermaLink="false">20261029</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261029.mp3" length="13613613" type="audio/mpeg"/>
+      <itunes:duration>00:14:10</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-28 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Wed, 28 Oct 2026 20:25:19 +0000</pubDate>
+      <guid isPermaLink="false">20261028</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261028.mp3" length="13781805" type="audio/mpeg"/>
+      <itunes:duration>00:14:21</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-27 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Tue, 27 Oct 2026 20:11:41 +0000</pubDate>
+      <guid isPermaLink="false">20261027</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261027.mp3" length="17586093" type="audio/mpeg"/>
+      <itunes:duration>00:18:19</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-24 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Sat, 24 Oct 2026 18:16:35 +0000</pubDate>
+      <guid isPermaLink="false">20261024</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261024.mp3" length="10104237" type="audio/mpeg"/>
+      <itunes:duration>00:10:31</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-23 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Fri, 23 Oct 2026 19:20:50 +0000</pubDate>
+      <guid isPermaLink="false">20261023</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261023.mp3" length="8562477" type="audio/mpeg"/>
+      <itunes:duration>00:08:55</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-20 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Tue, 20 Oct 2026 19:28:08 +0000</pubDate>
+      <guid isPermaLink="false">20261020</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261020.mp3" length="16847277" type="audio/mpeg"/>
+      <itunes:duration>00:17:32</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-19 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Mon, 19 Oct 2026 20:42:16 +0000</pubDate>
+      <guid isPermaLink="false">20261019</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261019.mp3" length="8707245" type="audio/mpeg"/>
+      <itunes:duration>00:09:04</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-18 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Sun, 18 Oct 2026 18:14:26 +0000</pubDate>
+      <guid isPermaLink="false">20261018</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261018.mp3" length="10977453" type="audio/mpeg"/>
+      <itunes:duration>00:11:26</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-17 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Sat, 17 Oct 2026 17:58:42 +0000</pubDate>
+      <guid isPermaLink="false">20261017</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261017.mp3" length="8854701" type="audio/mpeg"/>
+      <itunes:duration>00:09:13</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-16 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Fri, 16 Oct 2026 18:55:22 +0000</pubDate>
+      <guid isPermaLink="false">20261016</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261016.mp3" length="15128493" type="audio/mpeg"/>
+      <itunes:duration>00:15:45</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-12 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Mon, 12 Oct 2026 00:20:42 +0000</pubDate>
+      <guid isPermaLink="false">20261012</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261012.mp3" length="10293549" type="audio/mpeg"/>
+      <itunes:duration>00:10:43</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-11 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Sun, 11 Oct 2026 00:09:43 +0000</pubDate>
+      <guid isPermaLink="false">20261011</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261011.mp3" length="11134125" type="audio/mpeg"/>
+      <itunes:duration>00:11:35</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-10 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Sat, 10 Oct 2026 00:38:11 +0000</pubDate>
+      <guid isPermaLink="false">20261010</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261010.mp3" length="10962093" type="audio/mpeg"/>
+      <itunes:duration>00:11:25</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-09 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Fri, 09 Oct 2026 01:07:54 +0000</pubDate>
+      <guid isPermaLink="false">20261009</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261009.mp3" length="17913645" type="audio/mpeg"/>
+      <itunes:duration>00:18:39</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-08 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Thu, 08 Oct 2026 00:50:22 +0000</pubDate>
+      <guid isPermaLink="false">20261008</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261008.mp3" length="18706605" type="audio/mpeg"/>
+      <itunes:duration>00:19:29</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-07 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Wed, 07 Oct 2026 00:31:13 +0000</pubDate>
+      <guid isPermaLink="false">20261007</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261007.mp3" length="22023213" type="audio/mpeg"/>
+      <itunes:duration>00:22:56</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-06 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Tue, 06 Oct 2026 01:47:11 +0000</pubDate>
+      <guid isPermaLink="false">20261006</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261006.mp3" length="15378093" type="audio/mpeg"/>
+      <itunes:duration>00:16:01</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-04 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Sun, 04 Oct 2026 23:58:14 +0000</pubDate>
+      <guid isPermaLink="false">20261004</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261004.mp3" length="12593325" type="audio/mpeg"/>
+      <itunes:duration>00:13:07</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-03 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Sat, 03 Oct 2026 00:16:14 +0000</pubDate>
+      <guid isPermaLink="false">20261003</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261003.mp3" length="12791853" type="audio/mpeg"/>
+      <itunes:duration>00:13:19</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-02 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Fri, 02 Oct 2026 00:42:42 +0000</pubDate>
+      <guid isPermaLink="false">20261002</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261002.mp3" length="22143021" type="audio/mpeg"/>
+      <itunes:duration>00:23:03</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-10-01 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Thu, 01 Oct 2026 00:29:10 +0000</pubDate>
+      <guid isPermaLink="false">20261001</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20261001.mp3" length="11915181" type="audio/mpeg"/>
+      <itunes:duration>00:12:24</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-09-30 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Wed, 30 Sep 2026 00:16:20 +0000</pubDate>
+      <guid isPermaLink="false">20260930</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20260930.mp3" length="15308205" type="audio/mpeg"/>
+      <itunes:duration>00:15:56</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-09-29 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Tue, 29 Sep 2026 00:57:25 +0000</pubDate>
+      <guid isPermaLink="false">20260929</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20260929.mp3" length="15156525" type="audio/mpeg"/>
+      <itunes:duration>00:15:47</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-09-27 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Sun, 27 Sep 2026 23:45:59 +0000</pubDate>
+      <guid isPermaLink="false">20260927</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20260927.mp3" length="10145709" type="audio/mpeg"/>
+      <itunes:duration>00:10:34</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-09-26 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Sat, 26 Sep 2026 23:29:41 +0000</pubDate>
+      <guid isPermaLink="false">20260926</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20260926.mp3" length="11666349" type="audio/mpeg"/>
+      <itunes:duration>00:12:09</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-09-25 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Fri, 25 Sep 2026 23:59:37 +0000</pubDate>
+      <guid isPermaLink="false">20260925</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20260925.mp3" length="17796141" type="audio/mpeg"/>
+      <itunes:duration>00:18:32</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-09-24 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Thu, 24 Sep 2026 23:56:51 +0000</pubDate>
+      <guid isPermaLink="false">20260924</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20260924.mp3" length="20978349" type="audio/mpeg"/>
+      <itunes:duration>00:21:51</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-09-23 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Wed, 23 Sep 2026 12:40:52 +0000</pubDate>
+      <guid isPermaLink="false">20260923</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20260923.mp3" length="13210029" type="audio/mpeg"/>
+      <itunes:duration>00:13:45</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026-09-22 のダイジェスト</title>
+      <description>AI・プログラミング・コンピュータ・セキュリティの最新ニュースを毎日自動で要約してお届けします。</description>
+      <pubDate>Tue, 22 Sep 2026 23:41:30 +0000</pubDate>
+      <guid isPermaLink="false">20260922</guid>
+      <enclosure url="https://iorn121.github.io/claude-automation/episodes/20260922.mp3" length="16551597" type="audio/mpeg"/>
+      <itunes:duration>00:17:14</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>
