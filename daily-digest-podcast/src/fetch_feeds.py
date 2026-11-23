@@ -27,6 +27,7 @@ import logging
 import re
 import sys
 from calendar import timegm
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
@@ -176,6 +177,68 @@ def seed_labels(
     return merged
 
 
+def _articles_from_feed(
+    feed: dict[str, Any],
+    *,
+    mapping: dict[str, list[str]],
+    disabled_labels: set[str],
+    cutoff: datetime,
+    max_per_feed: int,
+) -> list[dict[str, Any]]:
+    name, url = feed["name"], feed["url"]
+    log.info("収集中: %s (%s)", name, url)
+    try:
+        parsed = feedparser.parse(url)
+    except Exception as e:  # noqa: BLE001
+        log.warning("フィード取得失敗: %s (%s)", name, e)
+        return []
+
+    if parsed.bozo and not parsed.entries:
+        log.warning("フィードのパースに問題あり、スキップ: %s", name)
+        return []
+
+    articles: list[dict[str, Any]] = []
+    for entry in parsed.entries:
+        if len(articles) >= max_per_feed:
+            break
+
+        published = _entry_published(entry)
+        if published is not None and published < cutoff:
+            continue  # 古い記事は対象外
+
+        raw_tags = _raw_entry_tags(entry)
+        title = entry.get("title", "(タイトルなし)")
+        entry_labels = _classify_genres(raw_tags, title, mapping)
+        if disabled_labels and any(label in disabled_labels for label in entry_labels):
+            continue  # OFFにされたジャンルに分類された記事は除外
+
+        link = entry.get("link", "")
+        summary_raw = entry.get("summary", "") or entry.get("description", "")
+        summary = _clean_html(summary_raw) if summary_raw else ""
+
+        text = summary
+        if len(summary) < MIN_TEXT_LEN_TO_SKIP_EXTRACTION and link:
+            full_text = _fetch_full_text(link)
+            if full_text and len(full_text) > len(summary):
+                text = full_text
+
+        if not text:
+            log.info("本文が取得できずスキップ: %s", title)
+            continue
+
+        articles.append(
+            {
+                "title": title,
+                "url": link,
+                "labels": entry_labels,
+                "source": name,
+                "published": (published or datetime.now(tz=timezone.utc)).isoformat(),
+                "text": text.strip(),
+            }
+        )
+    return articles
+
+
 def fetch_all(
     config_path: str | Path,
     labels_path: str | Path | None = None,
@@ -194,64 +257,24 @@ def fetch_all(
     lookback_hours = config.get("lookback_hours", 26)
     max_per_feed = config.get("max_articles_per_feed", 6)
     cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=lookback_hours)
+    enabled = [feed for feed in config["feeds"] if feed.get("enabled", True)]
 
     articles: list[dict[str, Any]] = []
-
-    for feed in config["feeds"]:
-        if not feed.get("enabled", True):
-            continue
-        name, url = feed["name"], feed["url"]
-        log.info("収集中: %s (%s)", name, url)
-        try:
-            parsed = feedparser.parse(url)
-        except Exception as e:  # noqa: BLE001
-            log.warning("フィード取得失敗: %s (%s)", name, e)
-            continue
-
-        if parsed.bozo and not parsed.entries:
-            log.warning("フィードのパースに問題あり、スキップ: %s", name)
-            continue
-
-        feed_count = 0
-        for entry in parsed.entries:
-            if feed_count >= max_per_feed:
-                break
-
-            published = _entry_published(entry)
-            if published is not None and published < cutoff:
-                continue  # 古い記事は対象外
-
-            raw_tags = _raw_entry_tags(entry)
-            title = entry.get("title", "(タイトルなし)")
-            entry_labels = _classify_genres(raw_tags, title, mapping)
-            if disabled_labels and any(label in disabled_labels for label in entry_labels):
-                continue  # OFFにされたジャンルに分類された記事は除外
-
-            link = entry.get("link", "")
-            summary_raw = entry.get("summary", "") or entry.get("description", "")
-            summary = _clean_html(summary_raw) if summary_raw else ""
-
-            text = summary
-            if len(summary) < MIN_TEXT_LEN_TO_SKIP_EXTRACTION and link:
-                full_text = _fetch_full_text(link)
-                if full_text and len(full_text) > len(summary):
-                    text = full_text
-
-            if not text:
-                log.info("本文が取得できずスキップ: %s", title)
-                continue
-
-            articles.append(
-                {
-                    "title": title,
-                    "url": link,
-                    "labels": entry_labels,
-                    "source": name,
-                    "published": (published or datetime.now(tz=timezone.utc)).isoformat(),
-                    "text": text.strip(),
-                }
+    if enabled:
+        workers = min(8, len(enabled))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            groups = pool.map(
+                lambda feed: _articles_from_feed(
+                    feed,
+                    mapping=mapping,
+                    disabled_labels=disabled_labels,
+                    cutoff=cutoff,
+                    max_per_feed=max_per_feed,
+                ),
+                enabled,
             )
-            feed_count += 1
+            for group in groups:
+                articles.extend(group)
 
     log.info("収集完了: %d件", len(articles))
     return articles
