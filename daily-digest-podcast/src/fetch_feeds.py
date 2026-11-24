@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import sys
 from calendar import timegm
 from concurrent.futures import ThreadPoolExecutor
@@ -35,6 +34,8 @@ from typing import Any
 import feedparser
 import trafilatura
 import yaml
+
+from genre import ArticleWindow, GenreMap, LabelGate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("fetch_feeds")
@@ -88,39 +89,13 @@ def load_label_mapping(mapping_path: str | Path) -> dict[str, list[str]]:
     return result
 
 
-def _keyword_matches(haystack: str, keyword: str) -> bool:
-    """キーワードがhaystackに含まれるか判定する。
-    英数字だけのキーワード(ai, aws 等)は単語境界つきで厳密にマッチさせる。
-    ("ai" が "raises"/"contain" などの単語の一部にヒットしてしまうのを防ぐため)
-    日本語などを含むキーワードは単純な部分一致でよい(単語境界の概念が違うため)。
-    """
-    if re.fullmatch(r"[a-z0-9 \-]+", keyword):
-        pattern = r"(?<![a-z0-9])" + re.escape(keyword) + r"(?![a-z0-9])"
-        return re.search(pattern, haystack) is not None
-    return keyword in haystack
-
-
-FALLBACK_GENRE = "その他"
-
-
 def _classify_genres(
     raw_tags: list[str],
     title: str,
     mapping: dict[str, list[str]],
 ) -> list[str]:
-    """生のタグ・タイトルを、あらかじめ定義されたジャンル(mappingのキー)に分類する。
-    どのジャンルのキーワードにも一致しなければ FALLBACK_GENRE(「その他」)に分類する
-    （＝記事には必ず1つ以上のラベルが付く）。
-    """
-    haystack = " ".join([*raw_tags, title]).lower()
-    matched = [
-        genre
-        for genre, keywords in mapping.items()
-        if any(_keyword_matches(haystack, kw) for kw in keywords)
-    ]
-    if matched:
-        return matched
-    return [FALLBACK_GENRE] if FALLBACK_GENRE in mapping else []
+    """生のタグ・タイトルを、あらかじめ定義されたジャンル(mappingのキー)に分類する。"""
+    return GenreMap(mapping).classify(title, raw_tags)
 
 
 def _clean_html(raw: str) -> str:
@@ -181,8 +156,8 @@ def _articles_from_feed(
     feed: dict[str, Any],
     *,
     mapping: dict[str, list[str]],
-    disabled_labels: set[str],
-    cutoff: datetime,
+    window: ArticleWindow,
+    gate: LabelGate,
     max_per_feed: int,
 ) -> list[dict[str, Any]]:
     name, url = feed["name"], feed["url"]
@@ -203,13 +178,13 @@ def _articles_from_feed(
             break
 
         published = _entry_published(entry)
-        if published is not None and published < cutoff:
+        if not window.includes(published):
             continue  # 古い記事は対象外
 
         raw_tags = _raw_entry_tags(entry)
         title = entry.get("title", "(タイトルなし)")
         entry_labels = _classify_genres(raw_tags, title, mapping)
-        if disabled_labels and any(label in disabled_labels for label in entry_labels):
+        if not gate.allows(entry_labels):
             continue  # OFFにされたジャンルに分類された記事は除外
 
         link = entry.get("link", "")
@@ -256,7 +231,8 @@ def fetch_all(
 
     lookback_hours = config.get("lookback_hours", 26)
     max_per_feed = config.get("max_articles_per_feed", 6)
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=lookback_hours)
+    window = ArticleWindow(datetime.now(tz=timezone.utc), lookback_hours)
+    gate = LabelGate(disabled_labels)
     enabled = [feed for feed in config["feeds"] if feed.get("enabled", True)]
 
     articles: list[dict[str, Any]] = []
@@ -267,8 +243,8 @@ def fetch_all(
                 lambda feed: _articles_from_feed(
                     feed,
                     mapping=mapping,
-                    disabled_labels=disabled_labels,
-                    cutoff=cutoff,
+                    window=window,
+                    gate=gate,
                     max_per_feed=max_per_feed,
                 ),
                 enabled,

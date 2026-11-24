@@ -33,6 +33,14 @@ import requests
 from pydub import AudioSegment
 
 from reading_dict import apply_readings
+from script import (
+    SPEAKER_TAG_ALIASES,
+    parse_block_turns,
+    parse_dialogue,
+    resolve_speaker_role,
+    split_into_news_blocks,
+    split_script,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("synthesize")
@@ -46,20 +54,6 @@ READING_DICT_PATH = Path(__file__).resolve().parent.parent / "config" / "reading
 # ニュース／段落の区切り（次の話題へ移るときの間）。
 # 2.5秒は間延びしやすいため、自然な話題切替の目安として 1.5秒を既定にする。
 SILENCE_BETWEEN_NEWS_MS = int(os.environ.get("SILENCE_BETWEEN_NEWS_MS", "1500"))
-
-# 対話台本の行頭タグ → 役割
-SPEAKER_TAG_ALIASES: dict[str, str] = {
-    "つむぎ": "host",
-    "ホスト": "host",
-    "host": "host",
-    "a": "host",
-    "ずんだもん": "guest",
-    "ゲスト": "guest",
-    "guest": "guest",
-    "b": "guest",
-}
-# 行頭「話者名: 本文」（全角コロンも許容）
-_SPEAKER_TAG_RE = re.compile(r"^([^:：\n]{1,20})[:：]\s*(.*)$")
 
 
 def resolve_host_speaker() -> int:
@@ -90,83 +84,6 @@ def wait_for_engine(base_url: str, timeout_sec: int = 120) -> None:
             pass
         time.sleep(2)
     raise RuntimeError(f"VOICEVOX ENGINE ({base_url}) に接続できませんでした")
-
-
-def split_into_news_blocks(text: str) -> list[str]:
-    """空行で区切られたニュース／セクション単位のブロックに分割する。"""
-    blocks = re.split(r"\n\s*\n+", text.strip())
-    return [b.strip() for b in blocks if b.strip()]
-
-
-def resolve_speaker_role(tag_name: str) -> str | None:
-    """話者タグ名を host/guest に解決する。未知なら None。"""
-    key = tag_name.strip()
-    if key in SPEAKER_TAG_ALIASES:
-        return SPEAKER_TAG_ALIASES[key]
-    lower = key.lower()
-    return SPEAKER_TAG_ALIASES.get(lower)
-
-
-def parse_block_turns(block: str) -> list[tuple[str, str]]:
-    """1ニュースブロックを (role, text) の発話列に分解する。
-
-    行頭に既知の話者タグがあれば役割を切り替え、タグ自体は本文から除く。
-    タグ無し行は直前の話者（冒頭は host）の続きとみなす。
-    """
-    turns: list[tuple[str, str]] = []
-    current_role = "host"
-    current_parts: list[str] = []
-
-    def flush() -> None:
-        nonlocal current_parts
-        text = "\n".join(current_parts).strip()
-        if text:
-            turns.append((current_role, text))
-        current_parts = []
-
-    for raw_line in block.split("\n"):
-        line = raw_line.strip()
-        if not line:
-            continue
-        matched = _SPEAKER_TAG_RE.match(line)
-        if matched:
-            role = resolve_speaker_role(matched.group(1))
-            if role is not None:
-                flush()
-                current_role = role
-                rest = matched.group(2).strip()
-                current_parts = [rest] if rest else []
-                continue
-        current_parts.append(line)
-
-    flush()
-    return turns
-
-
-def parse_dialogue(script: str) -> list[tuple[str, str]]:
-    """台本全体を話者タグ付き発話の平坦リストにする（テスト・検証用）。"""
-    turns: list[tuple[str, str]] = []
-    for block in split_into_news_blocks(script):
-        turns.extend(parse_block_turns(block))
-    return turns
-
-
-def split_script(text: str, max_len: int = MAX_CHUNK_LEN) -> list[str]:
-    """句点・改行で区切りつつ、max_len程度のまとまりに再結合する。"""
-    raw_sentences = re.split(r"(?<=[。！？\n])", text)
-    sentences = [s.strip() for s in raw_sentences if s.strip()]
-
-    chunks: list[str] = []
-    buf = ""
-    for sent in sentences:
-        if buf and len(buf) + len(sent) > max_len:
-            chunks.append(buf)
-            buf = sent
-        else:
-            buf += sent
-    if buf:
-        chunks.append(buf)
-    return chunks
 
 
 def plan_synthesis(
