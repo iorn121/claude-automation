@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import sys
 from calendar import timegm
 from concurrent.futures import ThreadPoolExecutor
@@ -35,6 +34,8 @@ from typing import Any
 import feedparser
 import trafilatura
 import yaml
+
+from genre import GenreMap
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("fetch_feeds")
@@ -88,39 +89,13 @@ def load_label_mapping(mapping_path: str | Path) -> dict[str, list[str]]:
     return result
 
 
-def _keyword_matches(haystack: str, keyword: str) -> bool:
-    """キーワードがhaystackに含まれるか判定する。
-    英数字だけのキーワード(ai, aws 等)は単語境界つきで厳密にマッチさせる。
-    ("ai" が "raises"/"contain" などの単語の一部にヒットしてしまうのを防ぐため)
-    日本語などを含むキーワードは単純な部分一致でよい(単語境界の概念が違うため)。
-    """
-    if re.fullmatch(r"[a-z0-9 \-]+", keyword):
-        pattern = r"(?<![a-z0-9])" + re.escape(keyword) + r"(?![a-z0-9])"
-        return re.search(pattern, haystack) is not None
-    return keyword in haystack
-
-
-FALLBACK_GENRE = "その他"
-
-
 def _classify_genres(
     raw_tags: list[str],
     title: str,
     mapping: dict[str, list[str]],
 ) -> list[str]:
-    """生のタグ・タイトルを、あらかじめ定義されたジャンル(mappingのキー)に分類する。
-    どのジャンルのキーワードにも一致しなければ FALLBACK_GENRE(「その他」)に分類する
-    （＝記事には必ず1つ以上のラベルが付く）。
-    """
-    haystack = " ".join([*raw_tags, title]).lower()
-    matched = [
-        genre
-        for genre, keywords in mapping.items()
-        if any(_keyword_matches(haystack, kw) for kw in keywords)
-    ]
-    if matched:
-        return matched
-    return [FALLBACK_GENRE] if FALLBACK_GENRE in mapping else []
+    """生のタグ・タイトルを、あらかじめ定義されたジャンル(mappingのキー)に分類する。"""
+    return GenreMap(mapping).classify(title, raw_tags)
 
 
 def _clean_html(raw: str) -> str:
