@@ -3,8 +3,30 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 
 FALLBACK_GENRE = "その他"
+
+class ArticleWindow:
+    """公開時刻が振り返り時間より前の記事は捨てる。時刻が無い記事は残す。"""
+
+    def __init__(self, now: datetime, lookback_hours: int):
+        self.cutoff = now.astimezone(timezone.utc) - timedelta(hours=lookback_hours)
+
+    def includes(self, published: datetime | None) -> bool:
+        return published is None or published >= self.cutoff
+
+
+class LabelGate:
+    """OFF のジャンルが一つでも付いた記事は載せない。OFF が無ければ全部載せる。"""
+
+    def __init__(self, disabled: set[str]):
+        self.disabled = disabled
+
+    def allows(self, labels: list[str]) -> bool:
+        if not self.disabled:
+            return True
+        return not any(label in self.disabled for label in labels)
 
 
 class GenreMap:

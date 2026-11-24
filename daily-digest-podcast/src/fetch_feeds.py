@@ -35,7 +35,7 @@ import feedparser
 import trafilatura
 import yaml
 
-from genre import GenreMap
+from genre import ArticleWindow, GenreMap, LabelGate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("fetch_feeds")
@@ -156,8 +156,8 @@ def _articles_from_feed(
     feed: dict[str, Any],
     *,
     mapping: dict[str, list[str]],
-    disabled_labels: set[str],
-    cutoff: datetime,
+    window: ArticleWindow,
+    gate: LabelGate,
     max_per_feed: int,
 ) -> list[dict[str, Any]]:
     name, url = feed["name"], feed["url"]
@@ -178,13 +178,13 @@ def _articles_from_feed(
             break
 
         published = _entry_published(entry)
-        if published is not None and published < cutoff:
+        if not window.includes(published):
             continue  # 古い記事は対象外
 
         raw_tags = _raw_entry_tags(entry)
         title = entry.get("title", "(タイトルなし)")
         entry_labels = _classify_genres(raw_tags, title, mapping)
-        if disabled_labels and any(label in disabled_labels for label in entry_labels):
+        if not gate.allows(entry_labels):
             continue  # OFFにされたジャンルに分類された記事は除外
 
         link = entry.get("link", "")
@@ -231,7 +231,8 @@ def fetch_all(
 
     lookback_hours = config.get("lookback_hours", 26)
     max_per_feed = config.get("max_articles_per_feed", 6)
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=lookback_hours)
+    window = ArticleWindow(datetime.now(tz=timezone.utc), lookback_hours)
+    gate = LabelGate(disabled_labels)
     enabled = [feed for feed in config["feeds"] if feed.get("enabled", True)]
 
     articles: list[dict[str, Any]] = []
@@ -242,8 +243,8 @@ def fetch_all(
                 lambda feed: _articles_from_feed(
                     feed,
                     mapping=mapping,
-                    disabled_labels=disabled_labels,
-                    cutoff=cutoff,
+                    window=window,
+                    gate=gate,
                     max_per_feed=max_per_feed,
                 ),
                 enabled,

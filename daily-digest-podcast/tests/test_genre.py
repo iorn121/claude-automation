@@ -30,6 +30,17 @@ class GenreMapTests(unittest.TestCase):
     def test_without_fallback_an_unknown_article_has_no_genre(self) -> None:
         self.assertEqual(GenreMap({"技術": ["ai"]}).classify("天気"), [])
 
+    def test_window_keeps_undated_articles_and_drops_old_ones(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        from genre import ArticleWindow, LabelGate
+
+        now = datetime(2026, 11, 25, tzinfo=timezone.utc)
+        window = ArticleWindow(now, 26)
+        self.assertTrue(window.includes(None))
+        self.assertFalse(window.includes(now - timedelta(hours=27)))
+        self.assertFalse(LabelGate({"技術"}).allows(["技術"]))
+        self.assertTrue(LabelGate(set()).allows(["技術"]))
+
 
 if __name__ == "__main__":
     unittest.main()
