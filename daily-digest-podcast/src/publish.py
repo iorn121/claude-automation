@@ -115,7 +115,43 @@ def publish_episode(
         json.dump(episodes, f, ensure_ascii=False, indent=2)
 
     _write_feed(docs_dir, episodes)
+    if episodes:
+        _write_flash_briefing(docs_dir, episodes[0])
     log.info("公開完了: %s (%d秒, %d bytes)", dest_path, duration_sec, file_size)
+
+
+def alexa_timestamp(iso: str) -> str:
+    """Flash Briefing が要求する UTC 表記（例: 2016-05-23T22:34:51.0Z）。"""
+    moment = datetime.fromisoformat(iso)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.0Z")
+
+
+def flash_briefing_item(episode: dict, base_url: str) -> dict:
+    """最新1本だけを Echo に渡す。過去回が連続再生されるのを避ける。"""
+    base_url = base_url.rstrip("/")
+    updated = alexa_timestamp(episode["pub_date"])
+    return {
+        "uid": f"digest-{episode['id']}-{updated}",
+        "updateDate": updated,
+        "titleText": episode["title"],
+        "mainText": "",
+        "streamUrl": f"{base_url}/episodes/{episode['filename']}",
+        "redirectionUrl": f"{base_url}/",
+    }
+
+
+def _write_flash_briefing(docs_dir: Path, latest: dict) -> None:
+    base_url = os.environ.get("PODCAST_BASE_URL", "").rstrip("/")
+    if not base_url:
+        raise SystemExit("環境変数 PODCAST_BASE_URL を設定してください (例: https://user.github.io/repo)")
+    item = flash_briefing_item(latest, base_url)
+    (docs_dir / "flashbriefing.json").write_text(
+        json.dumps([item], ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    log.info("Echo 用フィードを更新しました: flashbriefing.json")
 
 
 def _write_feed(docs_dir: Path, episodes: list[dict]) -> None:

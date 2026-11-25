@@ -1,0 +1,19 @@
+# 朝のブリーフィングに載せるニュース。見出しと短い要約だけを使う。
+# enabled: false で、削除せずに収集から外せる。
+
+feeds:
+  - name: "NHKニュース"
+    url: "https://www.nhk.or.jp/rss/news/cat0.xml"
+    enabled: true
+  - name: "ITmedia News"
+    url: "https://rss.itmedia.co.jp/rss/2.0/itmedia_news.xml"
+    enabled: true
+  - name: "GIGAZINE"
+    url: "https://gigazine.net/news/rss_2.0/"
+    enabled: true
+
+# 朝の実行で「昨夜から今朝」をカバーする
+lookback_hours: 30
+
+# 読み上げに載せる件数
+max_items: 5

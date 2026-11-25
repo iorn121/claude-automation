@@ -1,0 +1,207 @@
+name: Morning Echo Briefing
+
+# Podcast と同じく、main のサブフォルダで台本と mp3 を作り、
+# 生成物だけ podcast-data ブランチ（GitHub Pages）へ載せる。
+# リポジトリの Pages は1サイトだけなので、番組用ブランチの briefing/<トークン>/ に置く。
+# トークン付きパスにしないと、カレンダーとタスクが公開 URL から読めてしまう。
+#
+# 配信は次のどちらか（両方有効にすると朝に2回鳴る）。
+#   A. Voice Monkey … ジョブの最後に Echo へ音声をプッシュする（ANNOUNCE_AT まで待つ）
+#   B. Flash Briefing … フィードを Alexa の定刻ルーティンが取りにくる。公開から最大30分かかる
+#
+# 事前準備は morning-echo-briefing/README.md
+# Secrets:
+#   GEMINI_API_KEY          任意。無いときは定型の台本
+#   GOOGLE_TOKEN_JSON       scripts/auth_google.py が作る token.json の中身
+#   BRIEFING_PATH_TOKEN     openssl rand -hex 16。Pages に載せるとき必須
+#   VOICE_MONKEY_TOKEN      任意。プッシュ通知するとき
+#   VOICE_MONKEY_DEVICE     任意。対象の Echo Dot
+# Variables:
+#   PODCAST_BASE_URL        既存 Podcast と同じ。https://<user>.github.io/<repo>
+#   PUBLISH_TO_PAGES        "false" にすると公開せず、Voice Monkey の読み上げだけにする
+
+on:
+  schedule:
+    # 21:40 UTC = 6:40 JST。7:00 のアナウンスに間に合わせるため、生成は20分前に始める
+    - cron: "40 21 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: github-pages-podcast-data
+  cancel-in-progress: false
+
+env:
+  PROJECT_DIR: morning-echo-briefing
+  DATA_BRANCH: podcast-data
+  ANNOUNCE_AT: "07:00"
+  BRIEFING_TIMEZONE: Asia/Tokyo
+
+jobs:
+  build-and-announce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    services:
+      voicevox:
+        image: voicevox/voicevox_engine:cpu-latest
+        ports:
+          - 50021:50021
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: pip install -r requirements.txt
+
+      - name: Check that a delivery path is configured
+        env:
+          VOICE_MONKEY_TOKEN: ${{ secrets.VOICE_MONKEY_TOKEN }}
+          PUBLISH_TO_PAGES: ${{ vars.PUBLISH_TO_PAGES }}
+        run: |
+          publish="${PUBLISH_TO_PAGES:-true}"
+          if [ "$publish" = "false" ] && [ -z "${VOICE_MONKEY_TOKEN}" ]; then
+            echo "Pages 公開が無効で、Voice Monkey も未設定です。どちらかを有効にしてください。" >&2
+            exit 1
+          fi
+
+      - name: Wait for VOICEVOX ENGINE to be ready
+        if: vars.PUBLISH_TO_PAGES != 'false'
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:50021/version > /dev/null; then
+              echo "VOICEVOX ENGINE ready"
+              exit 0
+            fi
+            echo "waiting for VOICEVOX ENGINE... ($i)"
+            sleep 2
+          done
+          echo "VOICEVOX ENGINE did not become ready in time" >&2
+          exit 1
+
+      - name: Generate briefing
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          GOOGLE_CALENDAR_ID: ${{ vars.GOOGLE_CALENDAR_ID }}
+          GOOGLE_TASKLIST_ID: ${{ vars.GOOGLE_TASKLIST_ID }}
+          PODCAST_BASE_URL: ${{ vars.PODCAST_BASE_URL }}
+          BRIEFING_PATH_TOKEN: ${{ secrets.BRIEFING_PATH_TOKEN }}
+          BRIEFING_REQUIRE_TOKEN: ${{ vars.PUBLISH_TO_PAGES != 'false' && 'true' || 'false' }}
+          BRIEFING_SKIP_AUDIO: ${{ vars.PUBLISH_TO_PAGES == 'false' && 'true' || 'false' }}
+          BRIEFING_TIMEZONE: ${{ env.BRIEFING_TIMEZONE }}
+          VOICEVOX_URL: "http://127.0.0.1:50021"
+        run: python src/run_all.py
+
+      - name: Publish briefing onto the Pages branch
+        if: vars.PUBLISH_TO_PAGES != 'false'
+        env:
+          BRIEFING_PATH_TOKEN: ${{ secrets.BRIEFING_PATH_TOKEN }}
+          PODCAST_BASE_URL: ${{ vars.PODCAST_BASE_URL }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, re, sys
+          token = os.environ.get("BRIEFING_PATH_TOKEN", "")
+          base = os.environ.get("PODCAST_BASE_URL", "")
+          if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", token):
+              sys.exit("BRIEFING_PATH_TOKEN が未設定、または形式が不正です")
+          if not base.startswith("https://"):
+              sys.exit("Variable PODCAST_BASE_URL が https:// ではありません")
+          PY
+          rm -rf /tmp/pages
+          if git ls-remote --exit-code --heads origin "${DATA_BRANCH}" >/dev/null 2>&1; then
+            git clone --branch "${DATA_BRANCH}" --single-branch --depth 1 \
+              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+              /tmp/pages
+            rm -rf /tmp/pages/.git
+          else
+            mkdir -p /tmp/pages
+          fi
+          rm -rf /tmp/pages/briefing
+          mkdir -p "/tmp/pages/briefing/${BRIEFING_PATH_TOKEN}"
+          dest="/tmp/pages/briefing/${BRIEFING_PATH_TOKEN}"
+          cp "${PROJECT_DIR}/docs/flashbriefing.json" "${dest}/"
+          cp "${PROJECT_DIR}/docs/flashbriefing-audio.json" "${PROJECT_DIR}/docs/briefing.xml" "${dest}/"
+          cp "${PROJECT_DIR}"/docs/*.mp3 "${dest}/"
+          cd /tmp/pages
+          git init -q
+          git checkout -q -B "${DATA_BRANCH}"
+          git config user.name "digest-bot"
+          git config user.email "digest-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "chore: publish morning briefing ${{ github.run_id }}" || echo "変更なし"
+          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push --force origin "HEAD:${DATA_BRANCH}"
+
+      - name: Wait until the audio URL is reachable
+        id: audio
+        if: vars.PUBLISH_TO_PAGES != 'false'
+        env:
+          BRIEFING_PATH_TOKEN: ${{ secrets.BRIEFING_PATH_TOKEN }}
+          VOICE_MONKEY_TOKEN: ${{ secrets.VOICE_MONKEY_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path("morning-echo-briefing/docs/flashbriefing-audio.json").read_text())
+          url = data[0]["streamUrl"]
+          token = os.environ["BRIEFING_PATH_TOKEN"]
+          if token not in url or not url.startswith("https://"):
+              raise SystemExit("音声URLが公開用になっていません")
+          Path("/tmp/briefing_audio_url").write_text(url)
+          PY
+          url="$(cat /tmp/briefing_audio_url)"
+          for i in $(seq 1 36); do
+            code="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 15 "$url" || true)"
+            if [ "$code" = "200" ]; then
+              echo "ready=true" >> "$GITHUB_OUTPUT"
+              echo "音声URLの公開を確認しました (${i} 回目)"
+              exit 0
+            fi
+            echo "まだ公開されていません (HTTP ${code}) ${i}/36"
+            sleep 10
+          done
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+          if [ -n "${VOICE_MONKEY_TOKEN}" ]; then
+            echo "Pages の反映を待ちきれなかったため、テキスト読み上げに切り替えます"
+            exit 0
+          fi
+          echo "音声URLが公開されませんでした。Pages の設定と PODCAST_BASE_URL を確認してください。" >&2
+          exit 1
+
+      - name: Announce on Echo
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          VOICE_MONKEY_TOKEN: ${{ secrets.VOICE_MONKEY_TOKEN }}
+          VOICE_MONKEY_DEVICE: ${{ secrets.VOICE_MONKEY_DEVICE }}
+          VOICE_MONKEY_VOICE: Mizuki
+          VOICE_MONKEY_LANGUAGE: ja-JP
+          ANNOUNCE_AT: ${{ env.ANNOUNCE_AT }}
+          BRIEFING_TIMEZONE: ${{ env.BRIEFING_TIMEZONE }}
+          BRIEFING_AUDIO_READY: ${{ steps.audio.outputs.ready }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VOICE_MONKEY_TOKEN}" ] || [ -z "${VOICE_MONKEY_DEVICE}" ]; then
+            echo "Voice Monkey 未設定のため、Echo への即時アナウンスはスキップします。Flash Briefing 用フィードだけ更新しています。"
+            exit 0
+          fi
+          if [ "${BRIEFING_AUDIO_READY}" = "true" ]; then
+            BRIEFING_AUDIO_URL="$(cat /tmp/briefing_audio_url)"
+            export BRIEFING_AUDIO_URL
+          fi
+          python src/notify_echo.py

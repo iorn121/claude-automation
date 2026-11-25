@@ -27,6 +27,12 @@ def _silent_wav_bytes(duration_ms: int = 100, framerate: int = 24000) -> bytes:
     return buf.getvalue()
 
 
+def test_short_audio_is_padded_to_the_flash_briefing_minimum() -> None:
+    short = AudioSegment.silent(duration=1000)
+    padded = syn.ensure_min_duration(short)
+    assert len(padded) >= syn.MIN_DURATION_MS
+
+
 def test_split_into_news_blocks_by_blank_line() -> None:
     script = "挨拶です。\n\nニュース1です。続きます。\n\nニュース2です。"
     blocks = syn.split_into_news_blocks(script)
