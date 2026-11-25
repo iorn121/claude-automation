@@ -60,6 +60,12 @@ GitHub Pages + Podcast RSSで配信、を毎日自動実行する仕組みです
    - Apple Podcasts: 「ライブラリ」→「番組を追加」→ URLを貼り付け
    - 新しいエピソードは、毎朝6:00(JST)より前に追加されます。起動予定は 0:17(JST) で、GitHub の定時が数時間遅れても6時前に終わる想定です。
 
+8. **Echo Dot で朝に再生する**
+   - ダイジェストの最新1本: `https://<PODCAST_BASE_URL>/flashbriefing.json`
+   - カレンダーとタスクを含む朝の台本は `morning-echo-briefing/README.md`
+   - Alexa Developer Console で Flash Briefing スキルを作り、言語は日本語、コンテンツは音声、URL に上の JSON を入れます。
+   - ルーティンは 7:00 にします。公開から Alexa が音声を取るまで最大30分ほどかかるため、6:00 ちょうどではなく 7:00 が確実です。
+
 ## ローカルでの動作確認
 
 APIキーは `.env` ファイルに1回貼り付けておけば、以降は`export`不要でそのまま実行できます。

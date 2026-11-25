@@ -54,6 +54,8 @@ READING_DICT_PATH = Path(__file__).resolve().parent.parent / "config" / "reading
 # ニュース／段落の区切り（次の話題へ移るときの間）。
 # 2.5秒は間延びしやすいため、自然な話題切替の目安として 1.5秒を既定にする。
 SILENCE_BETWEEN_NEWS_MS = int(os.environ.get("SILENCE_BETWEEN_NEWS_MS", "1500"))
+# Flash Briefing の音声は 10 秒以上が条件。短い台本でも無音で満たす。
+MIN_DURATION_MS = 11_000
 
 
 def resolve_host_speaker() -> int:
@@ -146,6 +148,26 @@ def synthesize_chunk(base_url: str, text: str, speaker: int) -> bytes:
     return synth_res.content  # WAVバイト列
 
 
+def ensure_min_duration(segment: AudioSegment, minimum_ms: int = MIN_DURATION_MS) -> AudioSegment:
+    if len(segment) < minimum_ms:
+        return segment + AudioSegment.silent(duration=minimum_ms - len(segment))
+    return segment
+
+
+def export_mp3(segment: AudioSegment, out_path: Path) -> None:
+    """Echo の Flash Briefing が求める 256kbps で書き出す。"""
+    try:
+        segment.export(
+            out_path,
+            format="mp3",
+            bitrate="256k",
+            parameters=["-ac", "1", "-af", "loudnorm=I=-14:TP=-2:LRA=11"],
+        )
+    except Exception:
+        log.warning("ラウドネス正規化に失敗したため、音量補正なしで書き出します")
+        segment.export(out_path, format="mp3", bitrate="256k", parameters=["-ac", "1"])
+
+
 def assemble_from_plan(
     plan: list[tuple[str, int, int]] | list[tuple[str, int]],
     wav_by_index: list[bytes],
@@ -216,11 +238,11 @@ def synthesize_script(
         )
         wavs.append(synthesize_chunk(base_url, chunk, spk))
 
-    combined = assemble_from_plan(spoken_plan, wavs)
+    combined = ensure_min_duration(assemble_from_plan(spoken_plan, wavs))
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    combined.export(out_path, format="mp3", bitrate="128k")
+    export_mp3(combined, out_path)
     log.info(
         "音声ファイルを書き出しました: %s (%.1f分)",
         out_path,

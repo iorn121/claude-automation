@@ -25,6 +25,12 @@ on:
 permissions:
   contents: write
 
+# morning-echo-briefing と同じ podcast-data ブランチを force push する。
+# 同時に走ると後勝ちで相手のファイルが消えるため、直列に実行する。
+concurrency:
+  group: github-pages-podcast-data
+  cancel-in-progress: false
+
 env:
   PROJECT_DIR: daily-digest-podcast
   DATA_BRANCH: podcast-data
